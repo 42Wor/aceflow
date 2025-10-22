@@ -4,16 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-# This tells Rust to compile our library into a C-style dynamic library,
-# which Python can load.
 name = "aceflow_core"
 crate-type = ["cdylib"]
 
 [dependencies]
-# PyO3 is the magic glue for Rust-Python interoperability.
-# The "extension-module" feature is crucial for creating Python modules.
 pyo3 = { version = "0.20", features = ["extension-module"] }
-
-# We'll add these now to prepare for numerical work.
-ndarray = "0.15"
 numpy = "0.20"
+ndarray = { version = "0.15", features = ["serde"] }
+
+# Add these dependencies for weight initialization
+rand = "0.8"
+ndarray-rand = "0.14"
