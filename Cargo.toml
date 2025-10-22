@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "aceflow_core"
+]
+resolver = "2"
