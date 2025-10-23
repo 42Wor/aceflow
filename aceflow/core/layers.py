@@ -22,12 +22,17 @@ class Dense(Layer):
         scale = np.sqrt(2.0 / (input_dim + output_dim))
         self.params['W'] = np.random.randn(input_dim, output_dim) * scale
         self.params['b'] = np.zeros((1, output_dim))
+        
+        # Initialize gradients
+        self.grads['W'] = np.zeros_like(self.params['W'])
+        self.grads['b'] = np.zeros_like(self.params['b'])
     
     def forward(self, x: np.ndarray) -> np.ndarray:
         self.x = x
         return np.dot(x, self.params['W']) + self.params['b']
     
     def backward(self, dout: np.ndarray) -> np.ndarray:
+        # Reset gradients
         self.grads['W'] = np.dot(self.x.T, dout)
         self.grads['b'] = np.sum(dout, axis=0, keepdims=True)
         return np.dot(dout, self.params['W'].T)
@@ -41,6 +46,10 @@ class LSTMCell(Layer):
         total_dim = input_dim + hidden_dim
         self.params['W'] = np.random.randn(total_dim, 4 * hidden_dim) * 0.01
         self.params['b'] = np.zeros((1, 4 * hidden_dim))
+        
+        # Initialize gradients
+        self.grads['W'] = np.zeros_like(self.params['W'])
+        self.grads['b'] = np.zeros_like(self.params['b'])
     
     def forward(self, x: np.ndarray, h_prev: np.ndarray, c_prev: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         self.x = x
@@ -90,7 +99,7 @@ class LSTMCell(Layer):
         # Combine gate gradients
         dgates = np.concatenate([di_input, df_input, do_input, dg_input], axis=1)
         
-        # Gradients for weights and bias
+        # Reset and compute gradients for weights and bias
         self.grads['W'] = np.dot(combined.T, dgates)
         self.grads['b'] = np.sum(dgates, axis=0, keepdims=True)
         
@@ -115,12 +124,23 @@ class Embedding(Layer):
         self.vocab_size = vocab_size
         self.embedding_dim = embedding_dim
         self.params['W'] = np.random.randn(vocab_size, embedding_dim) * 0.01
+        self.grads['W'] = np.zeros_like(self.params['W'])
     
     def forward(self, x: np.ndarray) -> np.ndarray:
         self.x = x
         return self.params['W'][x]
     
     def backward(self, dout: np.ndarray) -> np.ndarray:
+        # Reset gradient
+        self.grads['W'] = np.zeros_like(self.params['W'])
+        
         # For embedding layer, we only update the gradients for used embeddings
-        np.add.at(self.grads['W'], self.x, dout)
-        return None
+        # Flatten indices and gradients for easier processing
+        flat_x = self.x.ravel()
+        flat_dout = dout.reshape(-1, self.embedding_dim)
+        
+        # Accumulate gradients for each unique index
+        for i, idx in enumerate(flat_x):
+            self.grads['W'][idx] += flat_dout[i]
+        
+        return None  # No gradient flows back through indices

@@ -27,15 +27,19 @@ class Trainer:
         loss = 0
         doutputs = np.zeros_like(predictions)
         
+        non_padding_count = 0
         for i in range(batch_size):
             for t in range(seq_len):
                 target_idx = targets[i, t]
                 if target_idx != 0:  # Ignore padding
                     loss += -np.log(probs[i, t, target_idx] + 1e-8)
                     doutputs[i, t, target_idx] = probs[i, t, target_idx] - 1
+                    non_padding_count += 1
         
-        loss /= (batch_size * seq_len)
-        doutputs /= (batch_size * seq_len)
+        # Normalize by non-padding tokens only
+        if non_padding_count > 0:
+            loss /= non_padding_count
+            doutputs /= non_padding_count
         
         return loss, doutputs
     

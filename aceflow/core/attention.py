@@ -6,6 +6,10 @@ class Attention:
         self.hidden_dim = hidden_dim
         self.W_a = np.random.randn(2 * hidden_dim, hidden_dim) * 0.01
         self.v_a = np.random.randn(hidden_dim, 1) * 0.01
+        
+        # Initialize gradients
+        self.dW_a = np.zeros_like(self.W_a)
+        self.dv_a = np.zeros_like(self.v_a)
     
     def forward(self, decoder_hidden: np.ndarray, encoder_outputs: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -38,9 +42,13 @@ class Attention:
         self.cache = (combined, scores, attention_weights)
         return context_vector, attention_weights
     
-    def backward(self, dcontext: np.ndarray, dattention_weights: np.ndarray) -> np.ndarray:
+    def backward(self, dcontext: np.ndarray, dattention_weights: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         combined, scores, attention_weights = self.cache
         batch_size, seq_len, hidden_dim = self.encoder_outputs.shape
+        
+        # Reset gradients
+        self.dW_a = np.zeros_like(self.W_a)
+        self.dv_a = np.zeros_like(self.v_a)
         
         # Gradient through context vector computation
         d_encoder_weighted = dcontext[:, np.newaxis, :] * attention_weights[:, :, np.newaxis]
