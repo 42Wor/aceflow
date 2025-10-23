@@ -1,112 +1,85 @@
 import numpy as np
+from typing import Tuple, List
+from .layers import LSTMCell, Embedding
 
 class Encoder:
-    """Bidirectional GRU Encoder with Multi-Head Attention"""
-    
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, num_layers=2, dropout=0.1):
+    def __init__(self, vocab_size: int, embedding_dim: int, hidden_dim: int, num_layers: int = 1):
         self.vocab_size = vocab_size
         self.embedding_dim = embedding_dim
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
-        self.dropout = dropout
         
-        # Embedding layer
-        self.embedding = np.random.randn(vocab_size, embedding_dim) * 0.01
-        
-        # GRU weights (bidirectional)
-        # Forward GRU
-        self.W_z_f = [np.random.randn(hidden_dim, hidden_dim + embedding_dim) * 0.01 for _ in range(num_layers)]
-        self.W_r_f = [np.random.randn(hidden_dim, hidden_dim + embedding_dim) * 0.01 for _ in range(num_layers)]
-        self.W_h_f = [np.random.randn(hidden_dim, hidden_dim + embedding_dim) * 0.01 for _ in range(num_layers)]
-        
-        # Backward GRU
-        self.W_z_b = [np.random.randn(hidden_dim, hidden_dim + embedding_dim) * 0.01 for _ in range(num_layers)]
-        self.W_r_b = [np.random.randn(hidden_dim, hidden_dim + embedding_dim) * 0.01 for _ in range(num_layers)]
-        self.W_h_b = [np.random.randn(hidden_dim, hidden_dim + embedding_dim) * 0.01 for _ in range(num_layers)]
-        
-        # Layer normalization
-        self.ln_f = [{'gamma': np.ones(hidden_dim), 'beta': np.zeros(hidden_dim)} for _ in range(num_layers)]
-        self.ln_b = [{'gamma': np.ones(hidden_dim), 'beta': np.zeros(hidden_dim)} for _ in range(num_layers)]
-        
-    def gru_cell(self, x, h_prev, W_z, W_r, W_h, layer_norm):
-        """Single GRU cell with layer normalization"""
-        # Concatenate input and previous hidden state
-        x_h = np.concatenate([x, h_prev])
-        
-        # Update gate
-        z = self._sigmoid(W_z @ x_h)
-        
-        # Reset gate
-        r = self._sigmoid(W_r @ x_h)
-        
-        # Candidate hidden state
-        x_rh = np.concatenate([x, r * h_prev])
-        h_tilde = np.tanh(W_h @ x_rh)
-        
-        # New hidden state
-        h_new = (1 - z) * h_prev + z * h_tilde
-        
-        # Layer normalization
-        h_new = self._layer_norm(h_new, layer_norm['gamma'], layer_norm['beta'])
-        
-        return h_new
+        self.embedding = Embedding(vocab_size, embedding_dim)
+        self.lstm_layers = [LSTMCell(embedding_dim if i == 0 else hidden_dim, hidden_dim) 
+                           for i in range(num_layers)]
     
-    def forward(self, input_sequence):
+    def forward(self, x: np.ndarray, h_prev: List[Tuple[np.ndarray, np.ndarray]] = None) -> Tuple[np.ndarray, List[Tuple[np.ndarray, np.ndarray]]]:
         """
-        input_sequence: list of token indices
-        Returns: encoder_outputs, hidden_states
+        x: (batch_size, seq_len)
+        Returns: encoder_outputs, (h_final, c_final)
         """
-        seq_len = len(input_sequence)
+        batch_size, seq_len = x.shape
         
-        # Embedding lookup
-        embedded = np.array([self.embedding[token] for token in input_sequence])
+        if h_prev is None:
+            h_prev = [(np.zeros((batch_size, self.hidden_dim)), 
+                      np.zeros((batch_size, self.hidden_dim))) 
+                     for _ in range(self.num_layers)]
         
-        # Initialize hidden states
-        h_forward = [np.zeros(self.hidden_dim) for _ in range(self.num_layers)]
-        h_backward = [np.zeros(self.hidden_dim) for _ in range(self.num_layers)]
+        # Embed input
+        embedded = self.embedding.forward(x)  # (batch_size, seq_len, embedding_dim)
         
-        encoder_outputs_forward = []
-        encoder_outputs_backward = []
-        
-        # Forward pass
-        for t in range(seq_len):
-            x = embedded[t]
-            for layer in range(self.num_layers):
-                h_forward[layer] = self.gru_cell(
-                    x, h_forward[layer], 
-                    self.W_z_f[layer], self.W_r_f[layer], self.W_h_f[layer],
-                    self.ln_f[layer]
-                )
-                x = h_forward[layer]  # Output becomes input to next layer
-            encoder_outputs_forward.append(h_forward[-1].copy())
-        
-        # Backward pass
-        for t in range(seq_len-1, -1, -1):
-            x = embedded[t]
-            for layer in range(self.num_layers):
-                h_backward[layer] = self.gru_cell(
-                    x, h_backward[layer],
-                    self.W_z_b[layer], self.W_r_b[layer], self.W_h_b[layer],
-                    self.ln_b[layer]
-                )
-                x = h_backward[layer]
-            encoder_outputs_backward.insert(0, h_backward[-1].copy())
-        
-        # Concatenate forward and backward outputs
         encoder_outputs = []
-        for fwd, bwd in zip(encoder_outputs_forward, encoder_outputs_backward):
-            combined = np.concatenate([fwd, bwd])
-            encoder_outputs.append(combined)
+        h_current = [ (h_prev[i][0].copy(), h_prev[i][1].copy()) for i in range(self.num_layers) ]
         
-        # Final hidden state (concatenated)
-        final_hidden = np.concatenate([h_forward[-1], h_backward[-1]])
+        # Process sequence
+        for t in range(seq_len):
+            x_t = embedded[:, t, :]  # (batch_size, embedding_dim)
+            
+            # Pass through LSTM layers
+            for layer_idx in range(self.num_layers):
+                h_current[layer_idx] = self.lstm_layers[layer_idx].forward(
+                    x_t, h_current[layer_idx][0], h_current[layer_idx][1]
+                )
+                x_t = h_current[layer_idx][0]  # Output becomes input to next layer
+            
+            encoder_outputs.append(h_current[-1][0])
         
-        return np.array(encoder_outputs), final_hidden
+        encoder_outputs = np.stack(encoder_outputs, axis=1)  # (batch_size, seq_len, hidden_dim)
+        final_states = [(h_current[i][0], h_current[i][1]) for i in range(self.num_layers)]
+        
+        self.cache = (embedded, seq_len)
+        return encoder_outputs, final_states
     
-    def _sigmoid(self, x):
-        return 1 / (1 + np.exp(-np.clip(x, -50, 50)))
-    
-    def _layer_norm(self, x, gamma, beta, eps=1e-5):
-        mean = np.mean(x)
-        std = np.std(x)
-        return gamma * (x - mean) / (std + eps) + beta
+    def backward(self, dencoder_outputs: np.ndarray) -> np.ndarray:
+        embedded, seq_len = self.cache
+        batch_size = embedded.shape[0]
+        
+        dembedded = np.zeros_like(embedded)
+        dh_next = [np.zeros((batch_size, self.hidden_dim)) for _ in range(self.num_layers)]
+        dc_next = [np.zeros((batch_size, self.hidden_dim)) for _ in range(self.num_layers)]
+        
+        # Backward through time
+        for t in reversed(range(seq_len)):
+            d_h_final = dencoder_outputs[:, t, :] + dh_next[-1]
+            d_c_final = dc_next[-1]
+            
+            # Backward through LSTM layers in reverse order
+            for layer_idx in reversed(range(self.num_layers)):
+                if layer_idx == 0:
+                    dx_t, dh_prev, dc_prev = self.lstm_layers[layer_idx].backward(
+                        d_h_final, d_c_final
+                    )
+                    dembedded[:, t, :] += dx_t
+                else:
+                    dx_t, dh_prev, dc_prev = self.lstm_layers[layer_idx].backward(
+                        d_h_final, d_c_final
+                    )
+                    dh_next[layer_idx-1] += dx_t
+                    dc_next[layer_idx-1] += dc_prev
+                
+                d_h_final, d_c_final = dh_prev, dc_prev
+        
+        # Backward through embedding
+        self.embedding.backward(dembedded.reshape(-1, self.embedding_dim))
+        
+        return None

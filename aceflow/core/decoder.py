@@ -1,107 +1,120 @@
 import numpy as np
+from typing import Tuple, List, Optional
+from .layers import LSTMCell, Embedding, Dense
 from .attention import Attention
 
 class Decoder:
-    """GRU Decoder with Attention Mechanism"""
-    
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, num_layers=2, dropout=0.1):
+    def __init__(self, vocab_size: int, embedding_dim: int, hidden_dim: int, 
+                 num_layers: int = 1, use_attention: bool = True):
         self.vocab_size = vocab_size
         self.embedding_dim = embedding_dim
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
-        self.dropout = dropout
+        self.use_attention = use_attention
         
-        # Embedding layer
-        self.embedding = np.random.randn(vocab_size, embedding_dim) * 0.01
+        self.embedding = Embedding(vocab_size, embedding_dim)
+        self.lstm_layers = [LSTMCell(embedding_dim if i == 0 else hidden_dim, hidden_dim) 
+                           for i in range(num_layers)]
         
-        # Attention mechanism
-        self.attention = Attention(hidden_dim * 2)  # *2 for bidirectional encoder
-        
-        # GRU weights
-        self.W_z = [np.random.randn(hidden_dim, hidden_dim + embedding_dim + hidden_dim * 2) * 0.01 
-                   for _ in range(num_layers)]
-        self.W_r = [np.random.randn(hidden_dim, hidden_dim + embedding_dim + hidden_dim * 2) * 0.01 
-                   for _ in range(num_layers)]
-        self.W_h = [np.random.randn(hidden_dim, hidden_dim + embedding_dim + hidden_dim * 2) * 0.01 
-                   for _ in range(num_layers)]
-        
-        # Output projection
-        self.W_out = np.random.randn(vocab_size, hidden_dim + hidden_dim * 2) * 0.01
-        self.b_out = np.zeros(vocab_size)
-        
-        # Layer normalization
-        self.ln = [{'gamma': np.ones(hidden_dim), 'beta': np.zeros(hidden_dim)} for _ in range(num_layers)]
-        
-    def gru_cell(self, x, h_prev, context, W_z, W_r, W_h, layer_norm):
-        """GRU cell with context vector"""
-        # Concatenate input, previous hidden state, and context
-        x_h_context = np.concatenate([x, h_prev, context])
-        
-        # Update gate
-        z = self._sigmoid(W_z @ x_h_context)
-        
-        # Reset gate
-        r = self._sigmoid(W_r @ x_h_context)
-        
-        # Candidate hidden state
-        x_rh_context = np.concatenate([x, r * h_prev, context])
-        h_tilde = np.tanh(W_h @ x_rh_context)
-        
-        # New hidden state
-        h_new = (1 - z) * h_prev + z * h_tilde
-        
-        # Layer normalization
-        h_new = self._layer_norm(h_new, layer_norm['gamma'], layer_norm['beta'])
-        
-        return h_new
+        if use_attention:
+            self.attention = Attention(hidden_dim)
+            self.output_layer = Dense(2 * hidden_dim, vocab_size)
+        else:
+            self.output_layer = Dense(hidden_dim, vocab_size)
     
-    def forward(self, input_token, hidden_states, encoder_outputs):
+    def forward(self, x: np.ndarray, encoder_outputs: np.ndarray, 
+                h_prev: List[Tuple[np.ndarray, np.ndarray]] = None) -> Tuple[np.ndarray, np.ndarray, List[Tuple[np.ndarray, np.ndarray]]]:
         """
-        Single decoding step
+        x: (batch_size, target_seq_len)
+        encoder_outputs: (batch_size, source_seq_len, hidden_dim)
         """
-        # Embedding lookup
-        embedded = self.embedding[input_token]
+        batch_size, target_seq_len = x.shape
         
-        # Initialize context for first layer
-        context = np.zeros(self.hidden_dim * 2)
+        if h_prev is None:
+            h_prev = [(np.zeros((batch_size, self.hidden_dim)), 
+                      np.zeros((batch_size, self.hidden_dim))) 
+                     for _ in range(self.num_layers)]
         
-        # Update hidden states through layers
-        new_hidden_states = []
-        x = embedded
+        embedded = self.embedding.forward(x)
         
-        for layer in range(self.num_layers):
-            h_prev = hidden_states[layer]
+        outputs = []
+        attention_weights_list = []
+        h_current = [ (h_prev[i][0].copy(), h_prev[i][1].copy()) for i in range(self.num_layers) ]
+        
+        for t in range(target_seq_len):
+            x_t = embedded[:, t, :]
             
-            # Get context vector using attention
-            if layer == 0:  # Only compute attention once
-                context, attention_weights = self.attention.forward(h_prev, encoder_outputs)
+            # Pass through LSTM layers
+            for layer_idx in range(self.num_layers):
+                h_current[layer_idx] = self.lstm_layers[layer_idx].forward(
+                    x_t, h_current[layer_idx][0], h_current[layer_idx][1]
+                )
+                x_t = h_current[layer_idx][0]
             
-            h_new = self.gru_cell(
-                x, h_prev, context,
-                self.W_z[layer], self.W_r[layer], self.W_h[layer],
-                self.ln[layer]
-            )
+            decoder_hidden = h_current[-1][0]
             
-            new_hidden_states.append(h_new)
-            x = h_new  # Output becomes input to next layer
+            if self.use_attention:
+                # Apply attention
+                context_vector, attention_weights = self.attention.forward(decoder_hidden, encoder_outputs)
+                # Combine context with decoder hidden state
+                combined = np.concatenate([context_vector, decoder_hidden], axis=1)
+                output = self.output_layer.forward(combined)
+                attention_weights_list.append(attention_weights)
+            else:
+                output = self.output_layer.forward(decoder_hidden)
+            
+            outputs.append(output)
         
-        # Output projection
-        output_input = np.concatenate([new_hidden_states[-1], context])
-        logits = self.W_out @ output_input + self.b_out
+        outputs = np.stack(outputs, axis=1)  # (batch_size, target_seq_len, vocab_size)
+        final_states = [(h_current[i][0], h_current[i][1]) for i in range(self.num_layers)]
         
-        # Softmax for probabilities
-        probs = self._softmax(logits)
+        self.cache = (embedded, encoder_outputs, attention_weights_list if self.use_attention else None)
+        return outputs, final_states
+    
+    def backward(self, doutputs: np.ndarray) -> np.ndarray:
+        embedded, encoder_outputs, attention_weights_list = self.cache
+        batch_size, target_seq_len, vocab_size = doutputs.shape
         
-        return probs, new_hidden_states, attention_weights, context
-    
-    def _sigmoid(self, x):
-        return 1 / (1 + np.exp(-np.clip(x, -50, 50)))
-    
-    def _softmax(self, x):
-        exp_x = np.exp(x - np.max(x))
-        return exp_x / np.sum(exp_x)
-    
-    def _layer_norm(self, x, gamma, beta, eps=1e-5):
-        mean = np.mean(x)
-        std = np.std(x)
-        return gamma * (x - mean) / (std + eps) + beta
+        dembedded = np.zeros_like(embedded)
+        dencoder_outputs = np.zeros_like(encoder_outputs) if self.use_attention else None
+        dh_next = [np.zeros((batch_size, self.hidden_dim)) for _ in range(self.num_layers)]
+        dc_next = [np.zeros((batch_size, self.hidden_dim)) for _ in range(self.num_layers)]
+        
+        for t in reversed(range(target_seq_len)):
+            d_output_t = doutputs[:, t, :]
+            
+            if self.use_attention:
+                # Backward through output layer
+                d_combined = self.output_layer.backward(d_output_t)
+                d_context = d_combined[:, :self.hidden_dim]
+                d_decoder_hidden_1 = d_combined[:, self.hidden_dim:]
+                
+                # Backward through attention
+                d_encoder_outputs_t, d_decoder_hidden_2 = self.attention.backward(d_context, None)
+                dencoder_outputs += d_encoder_outputs_t
+                d_decoder_hidden = d_decoder_hidden_1 + d_decoder_hidden_2 + dh_next[-1]
+            else:
+                d_decoder_hidden = self.output_layer.backward(d_output_t) + dh_next[-1]
+            
+            d_c_final = dc_next[-1]
+            
+            # Backward through LSTM layers
+            for layer_idx in reversed(range(self.num_layers)):
+                if layer_idx == 0:
+                    dx_t, dh_prev, dc_prev = self.lstm_layers[layer_idx].backward(
+                        d_decoder_hidden, d_c_final
+                    )
+                    dembedded[:, t, :] += dx_t
+                else:
+                    dx_t, dh_prev, dc_prev = self.lstm_layers[layer_idx].backward(
+                        d_decoder_hidden, d_c_final
+                    )
+                    dh_next[layer_idx-1] += dx_t
+                    dc_next[layer_idx-1] += dc_prev
+                
+                d_decoder_hidden, d_c_final = dh_prev, dc_prev
+        
+        # Backward through embedding
+        self.embedding.backward(dembedded.reshape(-1, self.embedding_dim))
+        
+        return dencoder_outputs

@@ -1,167 +1,127 @@
 import numpy as np
-import pickle
-from tqdm import tqdm
-from ..core.encoder import Encoder
-from ..core.decoder import Decoder
+from typing import Tuple, List, Optional, Dict
+from .encoder import Encoder
+from .decoder import Decoder
 
 class Seq2Seq:
-    """Complete Seq2Seq Model with Training Utilities"""
-    
-    def __init__(self, src_vocab_size, tgt_vocab_size, embedding_dim=256, 
-                 hidden_dim=512, num_layers=2, dropout=0.1):
+    def __init__(self, src_vocab_size: int, tgt_vocab_size: int, 
+                 embedding_dim: int = 256, hidden_dim: int = 512,
+                 num_layers: int = 2, use_attention: bool = True,
+                 dropout: float = 0.1):
         
         self.src_vocab_size = src_vocab_size
         self.tgt_vocab_size = tgt_vocab_size
         self.embedding_dim = embedding_dim
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
+        self.use_attention = use_attention
         
-        # Initialize encoder and decoder
-        self.encoder = Encoder(src_vocab_size, embedding_dim, hidden_dim, num_layers, dropout)
-        self.decoder = Decoder(tgt_vocab_size, embedding_dim, hidden_dim, num_layers, dropout)
+        self.encoder = Encoder(src_vocab_size, embedding_dim, hidden_dim, num_layers)
+        self.decoder = Decoder(tgt_vocab_size, embedding_dim, hidden_dim, num_layers, use_attention)
         
-        # Training history
-        self.training_history = {
-            'train_loss': [],
-            'val_loss': [],
-            'bleu_scores': []
-        }
+        # Special tokens
+        self.pad_token = 0
+        self.sos_token = 1
+        self.eos_token = 2
     
-    def forward(self, src_sequence, tgt_sequence=None, teacher_forcing_ratio=0.5, max_length=50):
+    def forward(self, src_seq: np.ndarray, tgt_seq: np.ndarray) -> np.ndarray:
         """
-        Forward pass for training or inference
+        src_seq: (batch_size, src_len)
+        tgt_seq: (batch_size, tgt_len)
         """
         # Encode source sequence
-        encoder_outputs, encoder_hidden = self.encoder.forward(src_sequence)
+        encoder_outputs, encoder_final_states = self.encoder.forward(src_seq)
         
-        # Initialize decoder hidden state
-        decoder_hidden = self._init_decoder_hidden(encoder_hidden)
+        # Decode target sequence
+        decoder_outputs, _ = self.decoder.forward(tgt_seq, encoder_outputs, encoder_final_states)
         
-        # Start token (assuming 0 is start token, 1 is end token)
-        decoder_input = 0
-        decoded_tokens = []
-        attention_weights = []
-        log_probs = []
+        self.cache = (encoder_outputs, encoder_final_states)
+        return decoder_outputs
+    
+    def backward(self, doutputs: np.ndarray) -> None:
+        encoder_outputs, encoder_final_states = self.cache
         
-        # Determine maximum length
-        max_len = len(tgt_sequence) if tgt_sequence is not None else max_length
+        # Backward through decoder
+        dencoder_outputs = self.decoder.backward(doutputs)
         
-        for t in range(max_len):
-            # Decoder forward step
-            probs, decoder_hidden, attn_weights, context = self.decoder.forward(
-                decoder_input, decoder_hidden, encoder_outputs
+        # Backward through encoder
+        if dencoder_outputs is not None:
+            self.encoder.backward(dencoder_outputs)
+    
+    def predict(self, src_seq: np.ndarray, max_length: int = 50) -> np.ndarray:
+        """
+        Generate prediction for source sequence
+        """
+        batch_size = src_seq.shape[0]
+        
+        # Encode source sequence
+        encoder_outputs, encoder_final_states = self.encoder.forward(src_seq)
+        
+        # Start with SOS token
+        current_tokens = np.full((batch_size, 1), self.sos_token, dtype=np.int32)
+        predictions = []
+        
+        for _ in range(max_length):
+            decoder_outputs, decoder_states = self.decoder.forward(
+                current_tokens, encoder_outputs, encoder_final_states
             )
             
-            # Store attention weights
-            attention_weights.append(attn_weights)
+            # Get most probable next token
+            next_tokens = np.argmax(decoder_outputs[:, -1, :], axis=1)
+            predictions.append(next_tokens)
             
-            # Get next token
-            if tgt_sequence is not None and np.random.random() < teacher_forcing_ratio:
-                # Teacher forcing
-                decoder_input = tgt_sequence[t]
-            else:
-                # Greedy decoding
-                decoder_input = np.argmax(probs)
-            
-            decoded_tokens.append(decoder_input)
-            log_probs.append(np.log(probs[decoder_input] + 1e-8))
-            
-            # Stop if end token is generated
-            if decoder_input == 1:  # Assuming 1 is end token
+            # Stop if all sequences generated EOS
+            if np.all(next_tokens == self.eos_token):
                 break
+            
+            # Update input for next step
+            current_tokens = next_tokens.reshape(-1, 1)
+            encoder_final_states = decoder_states
         
-        return decoded_tokens, log_probs, attention_weights
+        return np.stack(predictions, axis=1)
     
-    def train_step(self, src_sequence, tgt_sequence, optimizer, teacher_forcing_ratio=0.5):
-        """Single training step"""
-        # Forward pass
-        decoded_tokens, log_probs, _ = self.forward(
-            src_sequence, tgt_sequence, teacher_forcing_ratio
-        )
+    def get_params(self) -> Dict:
+        """Get all model parameters"""
+        params = {}
         
-        # Calculate loss (negative log likelihood)
-        loss = -np.sum(log_probs[:len(tgt_sequence)]) / len(tgt_sequence)
+        # Encoder parameters
+        params['encoder_embedding'] = self.encoder.embedding.params['W']
+        for i, lstm in enumerate(self.encoder.lstm_layers):
+            params[f'encoder_lstm_{i}_W'] = lstm.params['W']
+            params[f'encoder_lstm_{i}_b'] = lstm.params['b']
         
-        # Backward pass (simplified)
-        # In a full implementation, you'd compute gradients here
+        # Decoder parameters
+        params['decoder_embedding'] = self.decoder.embedding.params['W']
+        for i, lstm in enumerate(self.decoder.lstm_layers):
+            params[f'decoder_lstm_{i}_W'] = lstm.params['W']
+            params[f'decoder_lstm_{i}_b'] = lstm.params['b']
         
-        return loss, decoded_tokens
-    
-    def predict(self, src_sequence, max_length=50):
-        """Generate prediction for source sequence"""
-        decoded_tokens, _, attention_weights = self.forward(
-            src_sequence, None, teacher_forcing_ratio=0.0, max_length=max_length
-        )
-        return decoded_tokens, attention_weights
-    
-    def _init_decoder_hidden(self, encoder_hidden):
-        """Initialize decoder hidden state from encoder final state"""
-        # Split bidirectional encoder hidden and use as initial decoder state
-        hidden_dim = self.hidden_dim
-        forward_hidden = encoder_hidden[:hidden_dim]
+        if self.use_attention:
+            params['attention_W'] = self.decoder.attention.W_a
+            params['attention_v'] = self.decoder.attention.v_a
         
-        # Initialize all decoder layers with the forward hidden state
-        return [forward_hidden.copy() for _ in range(self.num_layers)]
-    
-    def get_parameters(self):
-        """Get all model parameters for saving"""
-        params = {
-            'encoder': {
-                'embedding': self.encoder.embedding,
-                'W_z_f': self.encoder.W_z_f,
-                'W_r_f': self.encoder.W_r_f,
-                'W_h_f': self.encoder.W_h_f,
-                'W_z_b': self.encoder.W_z_b,
-                'W_r_b': self.encoder.W_r_b,
-                'W_h_b': self.encoder.W_h_b,
-                'ln_f': self.encoder.ln_f,
-                'ln_b': self.encoder.ln_b,
-            },
-            'decoder': {
-                'embedding': self.decoder.embedding,
-                'W_z': self.decoder.W_z,
-                'W_r': self.decoder.W_r,
-                'W_h': self.decoder.W_h,
-                'W_out': self.decoder.W_out,
-                'b_out': self.decoder.b_out,
-                'ln': self.decoder.ln,
-                'attention': {
-                    'W1': self.decoder.attention.W1,
-                    'W2': self.decoder.attention.W2,
-                    'V': self.decoder.attention.V
-                }
-            },
-            'config': {
-                'src_vocab_size': self.src_vocab_size,
-                'tgt_vocab_size': self.tgt_vocab_size,
-                'embedding_dim': self.embedding_dim,
-                'hidden_dim': self.hidden_dim,
-                'num_layers': self.num_layers
-            }
-        }
+        params['output_W'] = self.decoder.output_layer.params['W']
+        params['output_b'] = self.decoder.output_layer.params['b']
+        
         return params
     
-    def set_parameters(self, params):
-        """Set model parameters from loaded data"""
-        # Set encoder parameters
-        self.encoder.embedding = params['encoder']['embedding']
-        self.encoder.W_z_f = params['encoder']['W_z_f']
-        self.encoder.W_r_f = params['encoder']['W_r_f']
-        self.encoder.W_h_f = params['encoder']['W_h_f']
-        self.encoder.W_z_b = params['encoder']['W_z_b']
-        self.encoder.W_r_b = params['encoder']['W_r_b']
-        self.encoder.W_h_b = params['encoder']['W_h_b']
-        self.encoder.ln_f = params['encoder']['ln_f']
-        self.encoder.ln_b = params['encoder']['ln_b']
+    def set_params(self, params: Dict) -> None:
+        """Set all model parameters"""
+        # Encoder parameters
+        self.encoder.embedding.params['W'] = params['encoder_embedding']
+        for i, lstm in enumerate(self.encoder.lstm_layers):
+            lstm.params['W'] = params[f'encoder_lstm_{i}_W']
+            lstm.params['b'] = params[f'encoder_lstm_{i}_b']
         
-        # Set decoder parameters
-        self.decoder.embedding = params['decoder']['embedding']
-        self.decoder.W_z = params['decoder']['W_z']
-        self.decoder.W_r = params['decoder']['W_r']
-        self.decoder.W_h = params['decoder']['W_h']
-        self.decoder.W_out = params['decoder']['W_out']
-        self.decoder.b_out = params['decoder']['b_out']
-        self.decoder.ln = params['decoder']['ln']
-        self.decoder.attention.W1 = params['decoder']['attention']['W1']
-        self.decoder.attention.W2 = params['decoder']['attention']['W2']
-        self.decoder.attention.V = params['decoder']['attention']['V']
+        # Decoder parameters
+        self.decoder.embedding.params['W'] = params['decoder_embedding']
+        for i, lstm in enumerate(self.decoder.lstm_layers):
+            lstm.params['W'] = params[f'decoder_lstm_{i}_W']
+            lstm.params['b'] = params[f'decoder_lstm_{i}_b']
+        
+        if self.use_attention:
+            self.decoder.attention.W_a = params['attention_W']
+            self.decoder.attention.v_a = params['attention_v']
+        
+        self.decoder.output_layer.params['W'] = params['output_W']
+        self.decoder.output_layer.params['b'] = params['output_b']
