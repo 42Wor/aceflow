@@ -1,146 +1,64 @@
-import numpy as np
-from typing import Optional, Tuple
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import math
 
-class Layer:
-    def __init__(self):
-        self.params = {}
-        self.grads = {}
-    
-    def forward(self, x: np.ndarray) -> np.ndarray:
-        raise NotImplementedError
-    
-    def backward(self, dout: np.ndarray) -> np.ndarray:
-        raise NotImplementedError
+class Encoder(nn.Module):
+    def __init__(self, vocab_size, hidden_size, num_layers=2, dropout=0.1, rnn_type='lstm'):
+        super(Encoder, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.embedding = nn.Embedding(vocab_size, hidden_size)
+        self.dropout = nn.Dropout(dropout)
+        
+        rnn_class = nn.LSTM if rnn_type == 'lstm' else nn.GRU
+        self.rnn = rnn_class(
+            hidden_size, hidden_size, num_layers,
+            dropout=dropout if num_layers > 1 else 0,
+            batch_first=True,
+            bidirectional=False
+        )
+        
+    def forward(self, x, hidden=None):
+        embedded = self.dropout(self.embedding(x))
+        output, hidden = self.rnn(embedded, hidden)
+        return output, hidden
 
-class Dense(Layer):
-    def __init__(self, input_dim: int, output_dim: int):
-        super().__init__()
-        self.input_dim = input_dim
-        self.output_dim = output_dim
+class Decoder(nn.Module):
+    def __init__(self, vocab_size, hidden_size, num_layers=2, dropout=0.1, rnn_type='lstm'):
+        super(Decoder, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.embedding = nn.Embedding(vocab_size, hidden_size)
+        self.dropout = nn.Dropout(dropout)
         
-        # Xavier initialization
-        scale = np.sqrt(2.0 / (input_dim + output_dim))
-        self.params['W'] = np.random.randn(input_dim, output_dim) * scale
-        self.params['b'] = np.zeros((1, output_dim))
+        rnn_class = nn.LSTM if rnn_type == 'lstm' else nn.GRU
+        self.rnn = rnn_class(
+            hidden_size, hidden_size, num_layers,
+            dropout=dropout if num_layers > 1 else 0,
+            batch_first=True
+        )
         
-        # Initialize gradients
-        self.grads['W'] = np.zeros_like(self.params['W'])
-        self.grads['b'] = np.zeros_like(self.params['b'])
-    
-    def forward(self, x: np.ndarray) -> np.ndarray:
-        self.x = x
-        return np.dot(x, self.params['W']) + self.params['b']
-    
-    def backward(self, dout: np.ndarray) -> np.ndarray:
-        # Reset gradients
-        self.grads['W'] = np.dot(self.x.T, dout)
-        self.grads['b'] = np.sum(dout, axis=0, keepdims=True)
-        return np.dot(dout, self.params['W'].T)
+        self.out = nn.Linear(hidden_size, vocab_size)
+        
+    def forward(self, x, hidden):
+        embedded = self.dropout(self.embedding(x))
+        output, hidden = self.rnn(embedded, hidden)
+        output = self.out(output)
+        return output, hidden
 
-class LSTMCell(Layer):
-    def __init__(self, input_dim: int, hidden_dim: int):
-        super().__init__()
-        self.hidden_dim = hidden_dim
+class Attention(nn.Module):
+    def __init__(self, hidden_size):
+        super(Attention, self).__init__()
+        self.hidden_size = hidden_size
+        self.attn = nn.Linear(hidden_size * 2, hidden_size)
+        self.v = nn.Linear(hidden_size, 1, bias=False)
         
-        # Combined weights for input, forget, output, and candidate gates
-        total_dim = input_dim + hidden_dim
-        self.params['W'] = np.random.randn(total_dim, 4 * hidden_dim) * 0.01
-        self.params['b'] = np.zeros((1, 4 * hidden_dim))
+    def forward(self, hidden, encoder_outputs):
+        batch_size = encoder_outputs.size(0)
+        seq_len = encoder_outputs.size(1)
         
-        # Initialize gradients
-        self.grads['W'] = np.zeros_like(self.params['W'])
-        self.grads['b'] = np.zeros_like(self.params['b'])
-    
-    def forward(self, x: np.ndarray, h_prev: np.ndarray, c_prev: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        self.x = x
-        self.h_prev = h_prev
-        self.c_prev = c_prev
-        
-        # Combine input and previous hidden state
-        combined = np.concatenate([x, h_prev], axis=1)
-        
-        # Compute all gates
-        gates = np.dot(combined, self.params['W']) + self.params['b']
-        
-        # Split gates
-        i, f, o, g = np.split(gates, 4, axis=1)
-        
-        # Apply activations
-        i = self.sigmoid(i)  # Input gate
-        f = self.sigmoid(f)  # Forget gate
-        o = self.sigmoid(o)  # Output gate
-        g = np.tanh(g)       # Candidate memory
-        
-        # Update cell state and hidden state
-        c_next = f * c_prev + i * g
-        h_next = o * np.tanh(c_next)
-        
-        self.cache = (i, f, o, g, combined, c_next)
-        return h_next, c_next
-    
-    def backward(self, dh_next: np.ndarray, dc_next: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        i, f, o, g, combined, c_next = self.cache
-        
-        # Gradients through output gate and cell state
-        do = dh_next * np.tanh(c_next)
-        dc = dc_next + dh_next * o * (1 - np.tanh(c_next) ** 2)
-        
-        # Gradients through forget, input, and candidate gates
-        df = dc * self.c_prev
-        di = dc * g
-        dg = dc * i
-        
-        # Gate derivatives
-        di_input = di * i * (1 - i)
-        df_input = df * f * (1 - f)
-        do_input = do * o * (1 - o)
-        dg_input = dg * (1 - g ** 2)
-        
-        # Combine gate gradients
-        dgates = np.concatenate([di_input, df_input, do_input, dg_input], axis=1)
-        
-        # Reset and compute gradients for weights and bias
-        self.grads['W'] = np.dot(combined.T, dgates)
-        self.grads['b'] = np.sum(dgates, axis=0, keepdims=True)
-        
-        # Gradient for combined input
-        dcombined = np.dot(dgates, self.params['W'].T)
-        
-        # Split gradients
-        dx = dcombined[:, :self.x.shape[1]]
-        dh_prev = dcombined[:, self.x.shape[1]:]
-        
-        # Gradient for previous cell state
-        dc_prev = dc * f
-        
-        return dx, dh_prev, dc_prev
-    
-    def sigmoid(self, x: np.ndarray) -> np.ndarray:
-        return 1 / (1 + np.exp(-np.clip(x, -50, 50)))
-
-class Embedding(Layer):
-    def __init__(self, vocab_size: int, embedding_dim: int):
-        super().__init__()
-        self.vocab_size = vocab_size
-        self.embedding_dim = embedding_dim
-        self.params['W'] = np.random.randn(vocab_size, embedding_dim) * 0.01
-        self.grads['W'] = np.zeros_like(self.params['W'])
-    
-    def forward(self, x: np.ndarray) -> np.ndarray:
-        self.x = x
-        return self.params['W'][x]
-    
-    def backward(self, dout: np.ndarray) -> np.ndarray:
-        # Reset gradient
-        self.grads['W'] = np.zeros_like(self.params['W'])
-        
-        # For embedding layer, we only update the gradients for used embeddings
-        # Flatten indices and gradients for easier processing
-        flat_x = self.x.ravel()
-        flat_dout = dout.reshape(-1, self.embedding_dim)
-        
-        # Accumulate gradients for each unique index
-        for i, idx in enumerate(flat_x):
-            self.grads['W'][idx] += flat_dout[i]
-        
-        return None  # No gradient flows back through indices
+        hidden = hidden[-1].unsqueeze(1).repeat(1, seq_len, 1)
+        energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim=2)))
+        attention = self.v(energy).squeeze(2)
+        return F.softmax(attention, dim=1)

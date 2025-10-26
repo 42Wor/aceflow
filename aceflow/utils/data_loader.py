@@ -1,45 +1,42 @@
+import torch
+from torch.utils.data import Dataset, DataLoader
 import numpy as np
-from typing import Tuple, List, TYPE_CHECKING
 
-# Use TYPE_CHECKING to avoid circular imports
-if TYPE_CHECKING:
-    from .tokenizer import Tokenizer
-
-class DataLoader:
-    def __init__(self, src_texts: List[str], tgt_texts: List[str], 
-                 src_tokenizer: 'Tokenizer', tgt_tokenizer: 'Tokenizer',
-                 batch_size: int = 32, max_length: int = 50):
-        
+class TranslationDataset(Dataset):
+    def __init__(self, src_texts, tgt_texts, src_tokenizer, tgt_tokenizer, max_length=50):
         self.src_texts = src_texts
         self.tgt_texts = tgt_texts
         self.src_tokenizer = src_tokenizer
         self.tgt_tokenizer = tgt_tokenizer
-        self.batch_size = batch_size
         self.max_length = max_length
         
-        # Encode all sequences
-        self.src_sequences = [src_tokenizer.encode(text, max_length) for text in src_texts]
-        self.tgt_sequences = [tgt_tokenizer.encode(text, max_length) for text in tgt_texts]
-        
-        self.num_samples = len(src_texts)
-        self.num_batches = (self.num_samples + batch_size - 1) // batch_size
+    def __len__(self):
+        return len(self.src_texts)
     
-    def __iter__(self):
-        self.current_batch = 0
-        return self
+    def __getitem__(self, idx):
+        src_text = self.src_texts[idx]
+        tgt_text = self.tgt_texts[idx]
+        
+        src_encoded = self.src_tokenizer.encode(src_text)
+        tgt_encoded = self.tgt_tokenizer.encode(tgt_text)
+        
+        # Pad sequences
+        src_padded = self.pad_sequence(src_encoded, self.max_length)
+        tgt_padded = self.pad_sequence(tgt_encoded, self.max_length)
+        
+        return {
+            'src': torch.tensor(src_padded, dtype=torch.long),
+            'tgt': torch.tensor(tgt_padded, dtype=torch.long)
+        }
     
-    def __next__(self) -> Tuple[np.ndarray, np.ndarray]:
-        if self.current_batch >= self.num_batches:
-            raise StopIteration
-        
-        start_idx = self.current_batch * self.batch_size
-        end_idx = min((self.current_batch + 1) * self.batch_size, self.num_samples)
-        
-        src_batch = np.stack(self.src_sequences[start_idx:end_idx])
-        tgt_batch = np.stack(self.tgt_sequences[start_idx:end_idx])
-        
-        self.current_batch += 1
-        return src_batch, tgt_batch
-    
-    def __len__(self) -> int:
-        return self.num_batches
+    def pad_sequence(self, sequence, max_length):
+        if len(sequence) < max_length:
+            sequence = sequence + [0] * (max_length - len(sequence))
+        else:
+            sequence = sequence[:max_length]
+        return sequence
+
+def create_data_loader(src_texts, tgt_texts, src_tokenizer, tgt_tokenizer, 
+                      batch_size=32, max_length=50, shuffle=True):
+    dataset = TranslationDataset(src_texts, tgt_texts, src_tokenizer, tgt_tokenizer, max_length)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)

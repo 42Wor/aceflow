@@ -1,11 +1,7 @@
-# aceflow/__init__.py
 
-# Import only after all classes are defined to avoid circular imports
-from .core.model import Seq2Seq
+from .core.model import Seq2SeqModel
 from .utils.tokenizer import Tokenizer
-from .utils.data_loader import DataLoader
-from .training.trainer import Trainer
-from .io.ace_saver import ACEFormat
+from .trainers.trainer import Trainer
 
-__version__ = "1.0.0"
-__all__ = ['Seq2Seq', 'Tokenizer', 'DataLoader', 'Trainer', 'ACEFormat']
+__version__ = "0.1.0"
+__all__ = ["Seq2SeqModel", "Tokenizer", "Trainer"]

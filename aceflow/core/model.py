@@ -1,127 +1,148 @@
-import numpy as np
-from typing import Tuple, List, Optional, Dict
-from .encoder import Encoder
-from .decoder import Decoder
+import torch
+import torch.nn as nn
+import json
+import os
+from ..utils.serialization import AceModelSerializer
+from .layers import Encoder, Decoder
+from .attention import AttentionalDecoder
 
-class Seq2Seq:
-    def __init__(self, src_vocab_size: int, tgt_vocab_size: int, 
-                 embedding_dim: int = 256, hidden_dim: int = 512,
-                 num_layers: int = 2, use_attention: bool = True,
-                 dropout: float = 0.1):
+class Seq2SeqModel(nn.Module):
+    def __init__(self, src_vocab_size, tgt_vocab_size, hidden_size=256, 
+                 num_layers=2, dropout=0.1, rnn_type='lstm', use_attention=True,
+                 teacher_forcing_ratio=0.5, max_length=50):
+        super(Seq2SeqModel, self).__init__()
         
         self.src_vocab_size = src_vocab_size
         self.tgt_vocab_size = tgt_vocab_size
-        self.embedding_dim = embedding_dim
-        self.hidden_dim = hidden_dim
+        self.hidden_size = hidden_size
         self.num_layers = num_layers
+        self.dropout = dropout
+        self.rnn_type = rnn_type
+        self.use_attention = use_attention
+        self.teacher_forcing_ratio = teacher_forcing_ratio
+        self.max_length = max_length
+        
+        # Build encoder and decoder
+        self.encoder = Encoder(src_vocab_size, hidden_size, num_layers, dropout, rnn_type)
+        
+        if use_attention:
+            self.decoder = AttentionalDecoder(tgt_vocab_size, hidden_size, num_layers, dropout, rnn_type)
+        else:
+            self.decoder = Decoder(tgt_vocab_size, hidden_size, num_layers, dropout, rnn_type)
+        
         self.use_attention = use_attention
         
-        self.encoder = Encoder(src_vocab_size, embedding_dim, hidden_dim, num_layers)
-        self.decoder = Decoder(tgt_vocab_size, embedding_dim, hidden_dim, num_layers, use_attention)
+    def forward(self, src, tgt=None, teacher_forcing_ratio=None):
+        batch_size = src.size(0)
         
-        # Special tokens
-        self.pad_token = 0
-        self.sos_token = 1
-        self.eos_token = 2
-    
-    def forward(self, src_seq: np.ndarray, tgt_seq: np.ndarray) -> np.ndarray:
-        """
-        src_seq: (batch_size, src_len)
-        tgt_seq: (batch_size, tgt_len)
-        """
-        # Encode source sequence
-        encoder_outputs, encoder_final_states = self.encoder.forward(src_seq)
+        # Forward pass through encoder
+        encoder_outputs, encoder_hidden = self.encoder(src)
         
-        # Decode target sequence
-        decoder_outputs, _ = self.decoder.forward(tgt_seq, encoder_outputs, encoder_final_states)
+        # Initialize decoder
+        decoder_hidden = encoder_hidden
+        decoder_input = torch.tensor([[1]] * batch_size, device=src.device)  # Start token
         
-        self.cache = (encoder_outputs, encoder_final_states)
-        return decoder_outputs
-    
-    def backward(self, doutputs: np.ndarray) -> None:
-        encoder_outputs, encoder_final_states = self.cache
+        # Store outputs
+        decoder_outputs = []
+        attention_weights = []
         
-        # Backward through decoder
-        dencoder_outputs = self.decoder.backward(doutputs)
+        # Use provided teacher_forcing_ratio or default
+        tf_ratio = teacher_forcing_ratio if teacher_forcing_ratio is not None else self.teacher_forcing_ratio
         
-        # Backward through encoder
-        if dencoder_outputs is not None:
-            self.encoder.backward(dencoder_outputs)
-    
-    def predict(self, src_seq: np.ndarray, max_length: int = 50) -> np.ndarray:
-        """
-        Generate prediction for source sequence
-        """
-        batch_size = src_seq.shape[0]
+        max_len = tgt.size(1) if tgt is not None else self.max_length
         
-        # Encode source sequence
-        encoder_outputs, encoder_final_states = self.encoder.forward(src_seq)
-        
-        # Start with SOS token
-        current_tokens = np.full((batch_size, 1), self.sos_token, dtype=np.int32)
-        predictions = []
-        
-        for _ in range(max_length):
-            decoder_outputs, decoder_states = self.decoder.forward(
-                current_tokens, encoder_outputs, encoder_final_states
-            )
+        for t in range(max_len):
+            if self.use_attention:
+                decoder_output, decoder_hidden, attn_weights = self.decoder(
+                    decoder_input, decoder_hidden, encoder_outputs
+                )
+                attention_weights.append(attn_weights)
+            else:
+                decoder_output, decoder_hidden = self.decoder(decoder_input, decoder_hidden)
             
-            # Get most probable next token
-            next_tokens = np.argmax(decoder_outputs[:, -1, :], axis=1)
-            predictions.append(next_tokens)
+            decoder_outputs.append(decoder_output)
             
-            # Stop if all sequences generated EOS
-            if np.all(next_tokens == self.eos_token):
-                break
-            
-            # Update input for next step
-            current_tokens = next_tokens.reshape(-1, 1)
-            encoder_final_states = decoder_states
+            # Teacher forcing
+            if tgt is not None and torch.rand(1).item() < tf_ratio:
+                decoder_input = tgt[:, t].unsqueeze(1)
+            else:
+                _, topi = decoder_output.topk(1)
+                decoder_input = topi.squeeze(-1).detach()
         
-        return np.stack(predictions, axis=1)
-    
-    def get_params(self) -> Dict:
-        """Get all model parameters"""
-        params = {}
-        
-        # Encoder parameters
-        params['encoder_embedding'] = self.encoder.embedding.params['W']
-        for i, lstm in enumerate(self.encoder.lstm_layers):
-            params[f'encoder_lstm_{i}_W'] = lstm.params['W']
-            params[f'encoder_lstm_{i}_b'] = lstm.params['b']
-        
-        # Decoder parameters
-        params['decoder_embedding'] = self.decoder.embedding.params['W']
-        for i, lstm in enumerate(self.decoder.lstm_layers):
-            params[f'decoder_lstm_{i}_W'] = lstm.params['W']
-            params[f'decoder_lstm_{i}_b'] = lstm.params['b']
+        decoder_outputs = torch.cat(decoder_outputs, dim=1)
         
         if self.use_attention:
-            params['attention_W'] = self.decoder.attention.W_a
-            params['attention_v'] = self.decoder.attention.v_a
-        
-        params['output_W'] = self.decoder.output_layer.params['W']
-        params['output_b'] = self.decoder.output_layer.params['b']
-        
-        return params
+            attention_weights = torch.stack(attention_weights, dim=1)
+            return decoder_outputs, attention_weights
+        else:
+            return decoder_outputs
     
-    def set_params(self, params: Dict) -> None:
-        """Set all model parameters"""
-        # Encoder parameters
-        self.encoder.embedding.params['W'] = params['encoder_embedding']
-        for i, lstm in enumerate(self.encoder.lstm_layers):
-            lstm.params['W'] = params[f'encoder_lstm_{i}_W']
-            lstm.params['b'] = params[f'encoder_lstm_{i}_b']
-        
-        # Decoder parameters
-        self.decoder.embedding.params['W'] = params['decoder_embedding']
-        for i, lstm in enumerate(self.decoder.lstm_layers):
-            lstm.params['W'] = params[f'decoder_lstm_{i}_W']
-            lstm.params['b'] = params[f'decoder_lstm_{i}_b']
-        
+    def encode(self, src):
+        encoder_outputs, encoder_hidden = self.encoder(src)
+        return encoder_outputs, encoder_hidden
+    
+    def decode(self, decoder_input, decoder_hidden, encoder_outputs):
         if self.use_attention:
-            self.decoder.attention.W_a = params['attention_W']
-            self.decoder.attention.v_a = params['attention_v']
-        
-        self.decoder.output_layer.params['W'] = params['output_W']
-        self.decoder.output_layer.params['b'] = params['output_b']
+            return self.decoder(decoder_input, decoder_hidden, encoder_outputs)
+        else:
+            return self.decoder(decoder_input, decoder_hidden)
+    
+    def save(self, filepath):
+        """Save model to .ace format"""
+        serializer = AceModelSerializer()
+        serializer.save_model(self, filepath)
+    
+    @classmethod
+    def load(cls, filepath):
+        """Load model from .ace format"""
+        serializer = AceModelSerializer()
+        return serializer.load_model(filepath)
+    
+    def beam_search(self, src, beam_width=5, max_length=50):
+        """Beam search for inference"""
+        self.eval()
+        with torch.no_grad():
+            # Encode source
+            encoder_outputs, encoder_hidden = self.encode(src)
+            
+            # Initialize beams
+            start_token = 1
+            beams = [([start_token], 0, encoder_hidden)]
+            
+            for _ in range(max_length):
+                new_beams = []
+                
+                for seq, score, hidden in beams:
+                    # Check if sequence ended
+                    if seq[-1] == 2:  # End token
+                        new_beams.append((seq, score, hidden))
+                        continue
+                    
+                    # Prepare decoder input
+                    decoder_input = torch.tensor([[seq[-1]]], device=src.device)
+                    
+                    # Decode
+                    if self.use_attention:
+                        decoder_output, new_hidden, _ = self.decode(decoder_input, hidden, encoder_outputs)
+                    else:
+                        decoder_output, new_hidden = self.decode(decoder_input, hidden)
+                    
+                    # Get top k candidates
+                    log_probs = torch.log_softmax(decoder_output.squeeze(), dim=0)
+                    topk_probs, topk_indices = torch.topk(log_probs, beam_width)
+                    
+                    for i in range(beam_width):
+                        new_seq = seq + [topk_indices[i].item()]
+                        new_score = score + topk_probs[i].item()
+                        new_beams.append((new_seq, new_score, new_hidden))
+                
+                # Keep top beam_width beams
+                beams = sorted(new_beams, key=lambda x: x[1], reverse=True)[:beam_width]
+                
+                # Check if all beams ended
+                if all(seq[-1] == 2 for seq, _, _ in beams):
+                    break
+            
+            # Return best sequence
+            best_sequence = beams[0][0]
+            return best_sequence

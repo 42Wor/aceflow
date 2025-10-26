@@ -1,82 +1,77 @@
-import numpy as np
-from typing import Tuple
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-class Attention:
-    def __init__(self, hidden_dim: int):
-        self.hidden_dim = hidden_dim
-        self.W_a = np.random.randn(2 * hidden_dim, hidden_dim) * 0.01
-        self.v_a = np.random.randn(hidden_dim, 1) * 0.01
+class BahdanauAttention(nn.Module):
+    def __init__(self, hidden_size):
+        super(BahdanauAttention, self).__init__()
+        self.hidden_size = hidden_size
+        self.W1 = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.W2 = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.V = nn.Linear(hidden_size, 1, bias=False)
         
-        # Initialize gradients
-        self.dW_a = np.zeros_like(self.W_a)
-        self.dv_a = np.zeros_like(self.v_a)
-    
-    def forward(self, decoder_hidden: np.ndarray, encoder_outputs: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        decoder_hidden: (batch_size, hidden_dim)
-        encoder_outputs: (batch_size, seq_len, hidden_dim)
-        """
-        self.decoder_hidden = decoder_hidden
-        self.encoder_outputs = encoder_outputs
+    def forward(self, decoder_hidden, encoder_outputs):
+        # decoder_hidden: [batch_size, hidden_size]
+        # encoder_outputs: [batch_size, seq_len, hidden_size]
         
-        batch_size, seq_len, hidden_dim = encoder_outputs.shape
+        batch_size = encoder_outputs.size(0)
+        seq_len = encoder_outputs.size(1)
         
         # Repeat decoder hidden state for each encoder time step
-        decoder_hidden_repeated = np.repeat(decoder_hidden[:, np.newaxis, :], seq_len, axis=1)
+        decoder_hidden = decoder_hidden.unsqueeze(1).repeat(1, seq_len, 1)
         
-        # Concatenate encoder outputs with decoder hidden state
-        combined = np.concatenate([encoder_outputs, decoder_hidden_repeated], axis=2)
-        
-        # Compute attention scores
-        scores = np.tanh(np.dot(combined, self.W_a))
-        scores = np.dot(scores, self.v_a).squeeze(-1)  # (batch_size, seq_len)
+        # Calculate attention scores
+        energy = torch.tanh(self.W1(encoder_outputs) + self.W2(decoder_hidden))
+        attention_scores = self.V(energy).squeeze(-1)
         
         # Apply softmax to get attention weights
-        max_scores = np.max(scores, axis=1, keepdims=True)
-        exp_scores = np.exp(scores - max_scores)
-        attention_weights = exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
+        attention_weights = F.softmax(attention_scores, dim=1)
         
-        # Compute context vector
-        context_vector = np.sum(encoder_outputs * attention_weights[:, :, np.newaxis], axis=1)
+        # Calculate context vector
+        context_vector = torch.bmm(attention_weights.unsqueeze(1), encoder_outputs)
+        context_vector = context_vector.squeeze(1)
         
-        self.cache = (combined, scores, attention_weights)
         return context_vector, attention_weights
-    
-    def backward(self, dcontext: np.ndarray, dattention_weights: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        combined, scores, attention_weights = self.cache
-        batch_size, seq_len, hidden_dim = self.encoder_outputs.shape
+
+class AttentionalDecoder(nn.Module):
+    def __init__(self, vocab_size, hidden_size, num_layers=2, dropout=0.1, rnn_type='lstm'):
+        super(AttentionalDecoder, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.vocab_size = vocab_size
         
-        # Reset gradients
-        self.dW_a = np.zeros_like(self.W_a)
-        self.dv_a = np.zeros_like(self.v_a)
+        self.embedding = nn.Embedding(vocab_size, hidden_size)
+        self.dropout = nn.Dropout(dropout)
+        self.attention = BahdanauAttention(hidden_size)
         
-        # Gradient through context vector computation
-        d_encoder_weighted = dcontext[:, np.newaxis, :] * attention_weights[:, :, np.newaxis]
-        d_attention_weights = np.sum(dcontext[:, np.newaxis, :] * self.encoder_outputs, axis=2)
+        rnn_class = nn.LSTM if rnn_type == 'lstm' else nn.GRU
+        self.rnn = rnn_class(
+            hidden_size * 2, hidden_size, num_layers,
+            dropout=dropout if num_layers > 1 else 0,
+            batch_first=True
+        )
         
-        if dattention_weights is not None:
-            d_attention_weights += dattention_weights
+        self.out = nn.Linear(hidden_size * 2, vocab_size)
         
-        # Gradient through softmax
-        d_scores = attention_weights * (d_attention_weights - np.sum(attention_weights * d_attention_weights, 
-                                                                   axis=1, keepdims=True))
+    def forward(self, x, hidden, encoder_outputs):
+        embedded = self.dropout(self.embedding(x))
         
-        # Gradient through score computation
-        d_combined_scores = np.dot(d_scores[:, :, np.newaxis], self.v_a.T)
-        d_v_a = np.sum(np.dot(combined, self.W_a).transpose(0, 2, 1) @ d_scores[:, :, np.newaxis], axis=0)
+        # Get attention context
+        if isinstance(hidden, tuple):  # LSTM
+            decoder_hidden = hidden[0][-1]  # Take last layer hidden state
+        else:  # GRU
+            decoder_hidden = hidden[-1]
+            
+        context, attention_weights = self.attention(decoder_hidden, encoder_outputs)
         
-        d_combined_tanh = d_combined_scores * (1 - np.tanh(np.dot(combined, self.W_a)) ** 2)
+        # Combine embedded input and context
+        rnn_input = torch.cat([embedded, context.unsqueeze(1)], dim=2)
         
-        # Gradient through linear transformation
-        d_W_a = np.sum(combined.transpose(0, 2, 1) @ d_combined_tanh, axis=0)
-        d_combined = np.dot(d_combined_tanh, self.W_a.T)
+        # RNN forward pass
+        output, hidden = self.rnn(rnn_input, hidden)
         
-        # Split gradients
-        d_encoder_outputs = d_combined[:, :, :hidden_dim] + d_encoder_weighted
-        d_decoder_hidden = np.sum(d_combined[:, :, hidden_dim:], axis=1)
+        # Combine output and context for final prediction
+        output = torch.cat([output, context.unsqueeze(1)], dim=2)
+        output = self.out(output)
         
-        # Store gradients
-        self.dW_a = d_W_a
-        self.dv_a = d_v_a
-        
-        return d_encoder_outputs, d_decoder_hidden
+        return output, hidden, attention_weights

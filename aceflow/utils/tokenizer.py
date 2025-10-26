@@ -1,46 +1,77 @@
-import numpy as np
-from typing import List, Dict, Optional
+import json
+from collections import Counter
+import pickle
 
 class Tokenizer:
     def __init__(self):
-        self.word2idx = {'<PAD>': 0, '<SOS>': 1, '<EOS>': 2, '<UNK>': 3}
-        self.idx2word = {0: '<PAD>', 1: '<SOS>', 2: '<EOS>', 3: '<UNK>'}
+        self.word2idx = {'<pad>': 0, '<start>': 1, '<end>': 2, '<unk>': 3}
+        self.idx2word = {0: '<pad>', 1: '<start>', 2: '<end>', 3: '<unk>'}
         self.vocab_size = 4
-    
-    def build_vocab(self, texts: List[str], min_freq: int = 1) -> None:
-        """Build vocabulary from list of texts"""
-        word_freq = {}
-        for text in texts:
-            for word in text.split():
-                word_freq[word] = word_freq.get(word, 0) + 1
         
-        # Add words meeting frequency threshold
-        for word, freq in word_freq.items():
-            if freq >= min_freq and word not in self.word2idx:
-                idx = self.vocab_size
-                self.word2idx[word] = idx
-                self.idx2word[idx] = word
+    def fit(self, texts, max_vocab_size=10000):
+        """Build vocabulary from texts"""
+        counter = Counter()
+        for text in texts:
+            if isinstance(text, str):
+                tokens = text.split()
+            else:
+                tokens = text
+            counter.update(tokens)
+        
+        # Keep most common words
+        most_common = counter.most_common(max_vocab_size - self.vocab_size)
+        
+        for word, _ in most_common:
+            if word not in self.word2idx:
+                self.word2idx[word] = self.vocab_size
+                self.idx2word[self.vocab_size] = word
                 self.vocab_size += 1
     
-    def encode(self, text: str, max_length: Optional[int] = None) -> np.ndarray:
-        """Encode text to sequence of indices"""
-        tokens = [self.word2idx.get(word, 3) for word in text.split()]
-        tokens = [1] + tokens + [2]  # Add SOS and EOS
+    def encode(self, text, add_special_tokens=True):
+        """Convert text to indices"""
+        if isinstance(text, str):
+            tokens = text.split()
+        else:
+            tokens = text
+            
+        indices = []
+        if add_special_tokens:
+            indices.append(self.word2idx['<start>'])
         
-        if max_length:
-            if len(tokens) > max_length:
-                tokens = tokens[:max_length-1] + [2]
-            else:
-                tokens = tokens + [0] * (max_length - len(tokens))
+        for token in tokens:
+            indices.append(self.word2idx.get(token, self.word2idx['<unk>']))
         
-        return np.array(tokens, dtype=np.int32)
+        if add_special_tokens:
+            indices.append(self.word2idx['<end>'])
+            
+        return indices
     
-    def decode(self, indices: np.ndarray) -> str:
-        """Decode indices to text"""
+    def decode(self, indices, remove_special_tokens=True):
+        """Convert indices to text"""
         tokens = []
         for idx in indices:
-            if idx == 2:  # EOS
-                break
-            if idx not in [0, 1]:  # Skip PAD and SOS
-                tokens.append(self.idx2word.get(idx, '<UNK>'))
+            if remove_special_tokens and idx in [0, 1, 2]:  # Skip special tokens
+                continue
+            tokens.append(self.idx2word.get(idx, '<unk>'))
         return ' '.join(tokens)
+    
+    def save(self, filepath):
+        """Save tokenizer to file"""
+        with open(filepath, 'wb') as f:
+            pickle.dump({
+                'word2idx': self.word2idx,
+                'idx2word': self.idx2word,
+                'vocab_size': self.vocab_size
+            }, f)
+    
+    @classmethod
+    def load(cls, filepath):
+        """Load tokenizer from file"""
+        with open(filepath, 'rb') as f:
+            data = pickle.load(f)
+        
+        tokenizer = cls()
+        tokenizer.word2idx = data['word2idx']
+        tokenizer.idx2word = data['idx2word']
+        tokenizer.vocab_size = data['vocab_size']
+        return tokenizer
