@@ -69,6 +69,7 @@ loaded_model = Seq2SeqModel.load("translation_model.ace")
 # Example inference
 test_sentence = "hello world"
 test_encoded = src_tokenizer.encode(test_sentence)
+print(f"Encoded input: {test_encoded}")
 test_tensor = torch.tensor([test_encoded], dtype=torch.long)
 
 with torch.no_grad():
