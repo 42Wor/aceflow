@@ -29,6 +29,9 @@ class Trainer:
             'train_accuracy': [],
             'val_accuracy': []
         }
+        
+        # Track best validation loss
+        self.best_val_loss = float('inf')
     
     def train_epoch(self, dataloader, teacher_forcing_ratio=0.5):
         self.model.train()
@@ -109,10 +112,14 @@ class Trainer:
         return avg_loss, accuracy
     
     def train(self, train_loader, val_loader, epochs=10, save_path=None, 
-              teacher_forcing_ratio=0.5, eval_every=1):
+            teacher_forcing_ratio=0.5, eval_every=1):
         
         print(f"Starting training on {self.device}")
         print(f"Model has {sum(p.numel() for p in self.model.parameters()):,} parameters")
+        
+        # Create directory for save_path if it doesn't exist
+        if save_path:
+            os.makedirs(os.path.dirname(save_path) if os.path.dirname(save_path) else '.', exist_ok=True)
         
         for epoch in range(epochs):
             print(f"\nEpoch {epoch+1}/{epochs}")
@@ -132,16 +139,43 @@ class Trainer:
                 print(f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
                 
                 # Save best model
-                if save_path and (len(self.history['val_loss']) == 1 or 
-                                val_loss == min(self.history['val_loss'])):
-                    best_save_path = save_path.replace('.ace', '_best.ace')
+                if save_path and val_loss < self.best_val_loss:
+                    self.best_val_loss = val_loss
+                    best_save_path = save_path.replace('.ace', '_best.ace') if save_path.endswith('.ace') else save_path + '_best.ace'
                     self.model.save(best_save_path)
+                    # ALSO SAVE THE BASE MODEL
+                    self.model.save(save_path)
                     print(f"Best model saved to {best_save_path}")
+                    print(f"Base model saved to {save_path}")
             else:
                 print(f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
             
-            # Save checkpoint
+            # Save regular checkpoint
             if save_path:
-                self.model.save(save_path)
+                # Save with epoch number
+                checkpoint_path = save_path.replace('.ace', f'_epoch_{epoch+1}.ace') if save_path.endswith('.ace') else save_path + f'_epoch_{epoch+1}.ace'
+                self.model.save(checkpoint_path)
+                print(f"Checkpoint saved to {checkpoint_path}")
+                
+                # Also save latest model
+                latest_path = save_path.replace('.ace', '_latest.ace') if save_path.endswith('.ace') else save_path + '_latest.ace'
+                self.model.save(latest_path)
         
-        return self.history
+        # Save final model
+        if save_path:
+            final_path = save_path.replace('.ace', '_final.ace') if save_path.endswith('.ace') else save_path + '_final.ace'
+            self.model.save(final_path)
+            print(f"Final model saved to {final_path}")
+            return self.history
+        
+    def save_training_history(self, filepath):
+        """Save training history to JSON file"""
+        import json
+        with open(filepath, 'w') as f:
+            json.dump(self.history, f, indent=2)
+    
+    def load_training_history(self, filepath):
+        """Load training history from JSON file"""
+        import json
+        with open(filepath, 'r') as f:
+            self.history = json.load(f)

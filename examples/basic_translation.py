@@ -8,13 +8,13 @@ english_sentences = [
     "hello world", "how are you", "good morning", "what is your name",
     "i love programming", "the weather is nice", "see you later",
     "thank you", "have a nice day", "where is the station"
-]
+]*10 
 
 french_sentences = [
     "bonjour le monde", "comment allez vous", "bonjour", "quel est votre nom",
     "j aime la programmation", "le temps est agreable", "a plus tard",
     "merci", "passez une bonne journee", "ou est la gare"
-]
+]*10
 
 # Initialize tokenizers
 src_tokenizer = Tokenizer()
@@ -52,24 +52,36 @@ model = Seq2SeqModel(
 # Initialize trainer
 trainer = Trainer(model, learning_rate=0.001)
 
-# Train model
+# Train model with proper save_path
+# Train model with proper save_path
 history = trainer.train(
     train_loader, val_loader, 
     epochs=10, 
-    save_path="translation_model.ace"
+    save_path="models/translation_model.ace",  # This is the base path
+    teacher_forcing_ratio=0.5,
+    eval_every=1
 )
 
-# Save tokenizers
-src_tokenizer.save("src_tokenizer.pkl")
-tgt_tokenizer.save("tgt_tokenizer.pkl")
+# Save training history
+trainer.save_training_history("training_history.json")
 
-# Load model for inference
-loaded_model = Seq2SeqModel.load("translation_model.ace")
+# Save tokenizers
+src_tokenizer.save("models/src_tokenizer.pkl")
+tgt_tokenizer.save("models/tgt_tokenizer.pkl")
+
+# Load model for inference - USE THE CORRECT PATH
+# Option 1: Load the best model
+loaded_model = Seq2SeqModel.load("models/translation_model_best.ace")
+
+# Option 2: Load the final model  
+# loaded_model = Seq2SeqModel.load("models/translation_model_final.ace")
+
+# Option 3: Load specific epoch
+# loaded_model = Seq2SeqModel.load("models/translation_model_epoch_10.ace")
 
 # Example inference
 test_sentence = "hello world"
 test_encoded = src_tokenizer.encode(test_sentence)
-print(f"Encoded input: {test_encoded}")
 test_tensor = torch.tensor([test_encoded], dtype=torch.long)
 
 with torch.no_grad():
