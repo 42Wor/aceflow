@@ -5,7 +5,7 @@ from torch.optim.lr_scheduler import StepLR
 import time
 import os
 from tqdm import tqdm
-
+from termcolor import cprint
 class Trainer:
     def __init__(self, model, learning_rate=0.001, device='auto'):
         self.model = model
@@ -154,11 +154,13 @@ class Trainer:
             if save_path:
                 # Save with epoch number
                 checkpoint_path = save_path.replace('.ace', f'_epoch_{epoch+1}.ace') if save_path.endswith('.ace') else save_path + f'_epoch_{epoch+1}.ace'
+                cprint(f"{checkpoint_path}", 'white', 'on_red', attrs=['bold'])
                 self.model.save(checkpoint_path)
                 print(f"Checkpoint saved to {checkpoint_path}")
                 
                 # Also save latest model
                 latest_path = save_path.replace('.ace', '_latest.ace') if save_path.endswith('.ace') else save_path + '_latest.ace'
+                cprint(f"{latest_path}", 'white', 'on_red', attrs=['bold'])
                 self.model.save(latest_path)
         
         # Save final model
