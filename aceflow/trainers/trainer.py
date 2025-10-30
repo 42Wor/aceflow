@@ -5,9 +5,11 @@ import os
 from tqdm import tqdm
 from termcolor import colored
 import json
+import numpy as np
 
 class Trainer:
-    def __init__(self, model, learning_rate=0.001, device='auto'):
+    def __init__(self, model, learning_rate=0.001, device='auto', 
+                 early_stopping_patience=None, early_stopping_min_delta=0.001):
         self.model = model
         
         # Set device
@@ -30,11 +32,32 @@ class Trainer:
             'val_accuracy': []
         }
         
-        # Track best validation loss
+        # Early stopping parameters
+        self.early_stopping_patience = early_stopping_patience
+        self.early_stopping_min_delta = early_stopping_min_delta
+        self.early_stopping_counter = 0
         self.best_val_loss = float('inf')
+        self.early_stop = False
         
         # Table headers
         self.table_headers = ["Epoch", "Train Loss", "Train Acc", "Val Loss", "Val Acc", "Status"]
+    
+    def check_early_stopping(self, val_loss):
+        """Check if training should stop early based on validation loss"""
+        # If early stopping is disabled, return False
+        if self.early_stopping_patience is None:
+            return False, "-"
+        
+        if val_loss < self.best_val_loss - self.early_stopping_min_delta:
+            self.best_val_loss = val_loss
+            self.early_stopping_counter = 0
+            return False, "Saved Best"
+        else:
+            self.early_stopping_counter += 1
+            if self.early_stopping_counter >= self.early_stopping_patience:
+                self.early_stop = True
+                return True, "Early Stop"
+            return False, "-"
     
     def train_epoch(self, dataloader, teacher_forcing_ratio=0.5):
         self.model.train()
@@ -144,6 +167,8 @@ class Trainer:
 
         if status == "Saved Best":
             status_colored = colored(f"{status:<12}", 'white', 'on_green', attrs=['bold'])
+        elif status == "Early Stop":
+            status_colored = colored(f"{status:<12}", 'white', 'on_red', attrs=['bold'])
         elif status == "Final":
             status_colored = colored(f"{status:<12}", 'white', 'on_blue', attrs=['bold'])
         else:
@@ -157,6 +182,12 @@ class Trainer:
         
         print(colored(f"Starting training on {self.device}", 'green', attrs=['bold']))
         print(colored(f"Model has {sum(p.numel() for p in self.model.parameters()):,} parameters", 'green'))
+        
+        # Display early stopping info
+        if self.early_stopping_patience is not None:
+            print(colored(f"Early stopping: {self.early_stopping_patience} epochs patience, min delta: {self.early_stopping_min_delta}", 'blue'))
+        else:
+            print(colored("Early stopping: Disabled", 'blue'))
         
         if save_path:
             os.makedirs(os.path.dirname(save_path) if os.path.dirname(save_path) else '.', exist_ok=True)
@@ -178,52 +209,82 @@ class Trainer:
                     val_loss, val_acc = self.validate_epoch(val_loader)
                     self.history['val_loss'].append(val_loss)
                     self.history['val_accuracy'].append(val_acc)
+                    
+                    # Check early stopping (only if enabled)
+                    if self.early_stopping_patience is not None:
+                        should_stop, status = self.check_early_stopping(val_loss)
+                        
+                        if should_stop:
+                            row_str = self._get_table_row_str(
+                                epoch, epochs, train_loss, train_acc, val_loss, val_acc, status
+                            )
+                            tqdm.write(row_str)
+                            print(colored(f"\nEarly stopping triggered after {epoch + 1} epochs!", 'red', attrs=['bold']))
+                            print(colored(f"Best validation loss: {self.best_val_loss:.4f}", 'green'))
+                            break
+                    else:
+                        # When early stopping is disabled, just check if this is the best model
+                        if val_loss < self.best_val_loss:
+                            self.best_val_loss = val_loss
+                            status = "Saved Best"
+                        else:
+                            status = "-"
                 else:
                     val_loss = self.history['val_loss'][-1] if self.history['val_loss'] else float('nan')
                     val_acc = self.history['val_accuracy'][-1] if self.history['val_accuracy'] else float('nan')
+                    status = "-"
                 
-                status = "-"
+                # Save best model
                 is_best = False
-                if save_path and val_loss < self.best_val_loss:
-                    self.best_val_loss = val_loss
-                    status = "Saved Best"
+                if save_path and status == "Saved Best":
                     is_best = True
                 
                 if epoch == epochs - 1:
                     status = "Final"
 
-                # **FIX**: Use tqdm.write to print the row without breaking the bar
+                # Print row using tqdm.write to avoid breaking the progress bar
                 row_str = self._get_table_row_str(
                     epoch, epochs, train_loss, train_acc, val_loss, val_acc, status
                 )
                 tqdm.write(row_str)
 
-                pbar.set_postfix({
+                # Update progress bar postfix
+                postfix_dict = {
                     'train_loss': f'{train_loss:.4f}',
                     'val_acc': f'{val_acc:.4f}'
-                })
+                }
+                if self.early_stopping_patience is not None:
+                    postfix_dict['patience'] = f'{self.early_stopping_counter}/{self.early_stopping_patience}'
+                
+                pbar.set_postfix(postfix_dict)
                 pbar.update(1)
                 
-                if save_path:
-                    if is_best:
-                        best_save_path = save_path.replace('.ace', '_best.ace') if save_path.endswith('.ace') else save_path + '_best.ace'
-                        if hasattr(self.model, 'save'): self.model.save(best_save_path)
-                    
-                    latest_path = save_path.replace('.ace', '_latest.ace') if save_path.endswith('.ace') else save_path + '_latest.ace'
-                    if hasattr(self.model, 'save'): self.model.save(latest_path)
+                if save_path and is_best:
+                    best_save_path = save_path.replace('.ace', '_best.ace') if save_path.endswith('.ace') else save_path + '_best.ace'
+                    if hasattr(self.model, 'save'): 
+                        self.model.save(best_save_path)
+                        print(colored(f"Best model saved to {best_save_path}", 'green'))
         
-        if save_path:
+        if save_path and not self.early_stop:
             final_path = save_path.replace('.ace', '_final.ace') if save_path.endswith('.ace') else save_path + '_final.ace'
             if hasattr(self.model, 'save'): 
                 self.model.save(final_path)
-                print(colored(f"\nFinal model saved to {final_path}", 'green', attrs=['bold']))
+                print(colored(f"Final model saved to {final_path}", 'green', attrs=['bold']))
         
         return self.history
     
     def save_training_history(self, filepath):
+        """Save training history to JSON file"""
         with open(filepath, 'w') as f:
             json.dump(self.history, f, indent=2)
     
     def load_training_history(self, filepath):
+        """Load training history from JSON file"""
         with open(filepath, 'r') as f:
             self.history = json.load(f)
+    
+    def get_best_epoch(self):
+        """Return the epoch with the best validation loss"""
+        if not self.history['val_loss']:
+            return -1
+        return np.argmin(self.history['val_loss'])
