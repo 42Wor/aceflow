@@ -9,7 +9,8 @@ from .attention import AttentionalDecoder
 class Seq2SeqModel(nn.Module):
     def __init__(self, src_vocab_size, tgt_vocab_size, hidden_size=256, 
                  num_layers=2, dropout=0.1, rnn_type='lstm', use_attention=True,
-                 teacher_forcing_ratio=0.5, max_length=50):
+                 teacher_forcing_ratio=0.5, max_length=50, bidirectional=False,
+                 attention_method='concat', embedding_dim=None):
         super(Seq2SeqModel, self).__init__()
         
         self.src_vocab_size = src_vocab_size
@@ -21,17 +22,62 @@ class Seq2SeqModel(nn.Module):
         self.use_attention = use_attention
         self.teacher_forcing_ratio = teacher_forcing_ratio
         self.max_length = max_length
+        self.bidirectional = bidirectional
+        self.attention_method = attention_method
         
-        # Build encoder and decoder
-        self.encoder = Encoder(src_vocab_size, hidden_size, num_layers, dropout, rnn_type)
+        # Validate RNN type
+        valid_rnn_types = ['rnn', 'lstm', 'gru', 'birnn', 'bilstm', 'bigru']
+        if self.rnn_type not in valid_rnn_types:
+            raise ValueError(f"Invalid RNN type: {rnn_type}. Choose from {valid_rnn_types}")
         
+        # Build encoder
+        self.encoder = Encoder(
+            vocab_size=src_vocab_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout,
+            rnn_type=rnn_type,
+            bidirectional=bidirectional,
+            embedding_dim=embedding_dim
+        )
+        
+        # Build decoder
         if use_attention:
-            self.decoder = AttentionalDecoder(tgt_vocab_size, hidden_size, num_layers, dropout, rnn_type)
+            self.decoder = AttentionalDecoder(
+                vocab_size=tgt_vocab_size,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                dropout=dropout,
+                rnn_type=rnn_type,
+                attention_method=attention_method,
+                encoder_bidirectional=bidirectional
+            )
         else:
-            self.decoder = Decoder(tgt_vocab_size, hidden_size, num_layers, dropout, rnn_type)
+            self.decoder = Decoder(
+                vocab_size=tgt_vocab_size,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                dropout=dropout,
+                rnn_type=rnn_type,
+                encoder_bidirectional=bidirectional
+            )
         
-        self.use_attention = use_attention
-        
+        # Store configuration
+        self.config = {
+            'src_vocab_size': src_vocab_size,
+            'tgt_vocab_size': tgt_vocab_size,
+            'hidden_size': hidden_size,
+            'num_layers': num_layers,
+            'dropout': dropout,
+            'rnn_type': rnn_type,
+            'use_attention': use_attention,
+            'teacher_forcing_ratio': teacher_forcing_ratio,
+            'max_length': max_length,
+            'bidirectional': bidirectional,
+            'attention_method': attention_method,
+            'embedding_dim': embedding_dim
+        }
+    
     def forward(self, src, tgt=None, teacher_forcing_ratio=None):
         batch_size = src.size(0)
         
@@ -39,7 +85,7 @@ class Seq2SeqModel(nn.Module):
         encoder_outputs, encoder_hidden = self.encoder(src)
         
         # Initialize decoder
-        decoder_hidden = encoder_hidden
+        decoder_hidden = self._init_decoder_hidden(encoder_hidden)
         decoder_input = torch.tensor([[1]] * batch_size, device=src.device)  # Start token
         
         # Store outputs
@@ -77,6 +123,26 @@ class Seq2SeqModel(nn.Module):
         else:
             return decoder_outputs
     
+    def _init_decoder_hidden(self, encoder_hidden):
+        """Initialize decoder hidden state from encoder hidden state"""
+        if self.rnn_type in ['lstm', 'bilstm']:
+            # For LSTM: (hidden, cell)
+            if self.bidirectional:
+                # Sum bidirectional layers
+                hidden = encoder_hidden[0][::2] + encoder_hidden[0][1::2]  # Even and odd
+                cell = encoder_hidden[1][::2] + encoder_hidden[1][1::2]
+                return (hidden, cell)
+            else:
+                return encoder_hidden
+        else:
+            # For RNN/GRU
+            if self.bidirectional:
+                # Sum bidirectional layers
+                hidden = encoder_hidden[::2] + encoder_hidden[1::2]
+                return hidden
+            else:
+                return encoder_hidden
+    
     def encode(self, src):
         encoder_outputs, encoder_hidden = self.encoder(src)
         return encoder_outputs, encoder_hidden
@@ -86,6 +152,18 @@ class Seq2SeqModel(nn.Module):
             return self.decoder(decoder_input, decoder_hidden, encoder_outputs)
         else:
             return self.decoder(decoder_input, decoder_hidden)
+    
+    def get_rnn_info(self):
+        """Get information about the RNN configuration"""
+        return {
+            'rnn_type': self.rnn_type,
+            'hidden_size': self.hidden_size,
+            'num_layers': self.num_layers,
+            'bidirectional': self.bidirectional,
+            'has_attention': self.use_attention,
+            'attention_method': self.attention_method if self.use_attention else None,
+            'total_parameters': sum(p.numel() for p in self.parameters())
+        }
     
     def save(self, filepath):
         """Save model to .ace format"""
