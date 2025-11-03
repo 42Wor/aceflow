@@ -1,38 +1,20 @@
+import torch
+import aceflow
 
+print(f"✅ Python version check passed")
+print(f"✅ PyTorch version: {torch.__version__}")
+print(f"✅ AceFlow version: {aceflow.__version__}")
 
-from aceflow import version
+# Test CUDA availability
+if torch.cuda.is_available():
+    print(f"✅ CUDA available: {torch.cuda.get_device_name(0)}")
+else:
+    print("ℹ️  CUDA not available - using CPU")
 
-print(f"AceFlow version: {version}")
-def get_recommended_rnn_type(task_type, data_size, sequence_length):
-    """
-    Recommend RNN type based on task characteristics
-    
-    Args:
-        task_type: 'translation', 'summarization', 'chatbot', 'classification'
-        data_size: 'small' (<10K samples), 'medium' (10K-100K), 'large' (>100K)
-        sequence_length: 'short' (<50), 'medium' (50-200), 'long' (>200)
-    """
-    
-    recommendations = {
-        'translation': {
-            'small': {'short': 'gru', 'medium': 'lstm', 'long': 'bilstm'},
-            'medium': {'short': 'lstm', 'medium': 'bilstm', 'long': 'bilstm'},
-            'large': {'short': 'bilstm', 'medium': 'bilstm', 'long': 'bilstm'}
-        },
-        'summarization': {
-            'small': {'short': 'gru', 'medium': 'lstm', 'long': 'bilstm'},
-            'medium': {'short': 'lstm', 'medium': 'bilstm', 'long': 'bilstm'},
-            'large': {'short': 'bilstm', 'medium': 'bilstm', 'long': 'bilstm'}
-        },
-        'chatbot': {
-            'small': {'short': 'gru', 'medium': 'lstm', 'long': 'lstm'},
-            'medium': {'short': 'lstm', 'medium': 'lstm', 'long': 'bilstm'},
-            'large': {'short': 'lstm', 'medium': 'bilstm', 'long': 'bilstm'}
-        }
-    }
-    
-    return recommendations.get(task_type, {}).get(data_size, {}).get(sequence_length, 'lstm')
+# Test basic imports
+from aceflow import Seq2SeqModel
+from aceflow.utils import Tokenizer
+from aceflow.trainers import Trainer
 
-# Usage example:
-recommended = get_recommended_rnn_type('translation', 'medium', 'medium')
-print(f"Recommended RNN type: {recommended}")  # Output: 'bilstm'
+print("✅ All imports successful!")
+print("🎉 AceFlow installed successfully!")

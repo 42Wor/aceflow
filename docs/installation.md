@@ -5,9 +5,6 @@ Get AceFlow up and running on your system with this comprehensive installation g
 ## 🎯 Quick Install
 
 ```bash
-# Install core dependencies
-pip install torch tqdm h5py pyyaml contractions
-
 # Install AceFlow from source
 git clone https://github.com/42Wor/aceflow.git
 cd aceflow
@@ -55,13 +52,8 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 ```
 
-#### Step 2: Install AceFlow Dependencies
 
-```bash
-pip install tqdm h5py pyyaml contractions
-```
-
-#### Step 3: Install AceFlow
+#### Step 2: Install AceFlow
 
 ```bash
 # Clone the repository
@@ -82,32 +74,12 @@ conda activate aceflow
 # Install PyTorch with CUDA support
 conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
 
-# Install other dependencies
-pip install tqdm h5py pyyaml contractions
-
 # Install AceFlow
 git clone https://github.com/42Wor/aceflow.git
 cd aceflow
 pip install -e .
 ```
 
-### Method 3: Using requirements.txt
-
-```bash
-# Create requirements.txt with the following content:
-# torch>=1.9.0
-# tqdm>=4.60.0
-# h5py>=3.0.0
-# pyyaml>=5.4.0
-# contractions>=0.1.73
-
-pip install -r requirements.txt
-
-# Then install AceFlow
-git clone https://github.com/42Wor/aceflow.git
-cd aceflow
-pip install -e .
-```
 
 ## 🚀 Verification
 

@@ -298,15 +298,3 @@ Ready to dive deeper? Check out:
 ---
 
 **Congratulations!** You've built your first Seq2Seq model with AceFlow! 🎉
-```
-
-This quickstart guide provides:
-
-1. **Complete working example** - Copy-paste ready code
-2. **Step-by-step explanation** - Understand each part
-3. **Different use cases** - Translation, summarization, chatbot
-4. **Common modifications** - Larger/faster models
-5. **Troubleshooting** - Solutions to common problems
-6. **Clear next steps** - Where to go from here
-
-The guide is designed to get users from zero to a working model as quickly as possible while explaining the key concepts along the way.
