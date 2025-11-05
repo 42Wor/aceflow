@@ -24,8 +24,8 @@ tgt_tokenizer = Tokenizer()
 src_tokenizer.fit(english_sentences)
 tgt_tokenizer.fit(french_sentences)
 
-print(f"Source vocabulary size: {src_tokenizer.vocab_size}")
-print(f"Target vocabulary size: {tgt_tokenizer.vocab_size}")
+print(f"Source vocabulary size: {src_tokenizer.get_vocab_size}")
+print(f"Target vocabulary size: {tgt_tokenizer.get_vocab_size}")
 
 # Create data loaders
 train_loader = create_data_loader(
@@ -42,8 +42,8 @@ val_loader = create_data_loader(
 
 # Initialize model
 model = Seq2SeqModel(
-    src_vocab_size=src_tokenizer.vocab_size,
-    tgt_vocab_size=tgt_tokenizer.vocab_size,
+    src_get_vocab_size=src_tokenizer.vocab_size,
+    tgt_get_vocab_size=tgt_tokenizer.vocab_size,
     hidden_size=128,
     num_layers=2,
     use_attention=True
