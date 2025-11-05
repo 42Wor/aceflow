@@ -1,17 +1,22 @@
-I'll list all files, classes, and functions in the AceFlow project structure.
+I'll update the comprehensive file and class listing to reflect the current AceFlow project structure with the enhanced trainer system.
 
-## Project Structure
+## Updated Project Structure
 
 ```
 aceflow/
 ├── setup.py
 ├── requirements.txt
 ├── README.md
+├── docs/
+│   └── api/
+│       └── utilities.md
 ├── examples/
 │   ├── basic_translation.py
 │   ├── fast_translation.py
 │   ├── rnn_comparison.py
-│   └── enhanced_tokenizer_demo.py
+│   ├── enhanced_tokenizer_demo.py
+│   ├── enhanced_training.py
+│   └── clean_training.py
 └── aceflow/
     ├── __init__.py
     ├── core/
@@ -28,7 +33,7 @@ aceflow/
     │   │   └── tokenizer.py
     │   ├── data_loader.py
     │   └── serialization.py
-    ├── trainers/
+    └── trainers/
         ├── __init__.py
         ├── base_trainer.py
         ├── seq2seq_trainer.py
@@ -199,17 +204,77 @@ aceflow/
 
 ## Trainers Module (`aceflow/trainers/`)
 
-### `trainer.py`
+### `base_trainer.py`
 **Classes:**
-- `Trainer` - Training management class
+- `BaseTrainer` - Foundation training class with common functionality
 
-**Methods in Trainer:**
-- `__init__()` - Initialize trainer
-- `train_epoch()` - Train for one epoch
-- `validate_epoch()` - Validate for one epoch
-- `train()` - Main training loop
-- `save_training_history()` - Save training history
+**Methods in BaseTrainer:**
+- `__init__()` - Initialize trainer with comprehensive configuration
+- `_setup_device()` - Auto-detect and setup training device
+- `_safe_print()` - Print without breaking tqdm progress bars
+- `print_table_header()` - Display professional training table header
+- `_get_table_row_str()` - Format table row with metrics
+- `check_early_stopping()` - Early stopping logic
+- `train()` - Main training loop with progress tracking
+- `save_training_history()` - Save training metrics to JSON
 - `load_training_history()` - Load training history
+- `get_best_epoch()` - Find best performing epoch
+- `get_learning_rate()` - Get current learning rate
+- `set_learning_rate()` - Set learning rate
+- `backward_pass()` - Mixed precision backward pass
+- `optimizer_step()` - Optimizer step with AMP support
+- `clip_gradients()` - Gradient clipping
+
+### `seq2seq_trainer.py`
+**Classes:**
+- `Seq2SeqTrainer` - Specialized trainer for sequence-to-sequence models
+
+**Methods in Seq2SeqTrainer:**
+- `__init__()` - Initialize with Seq2Seq-specific parameters
+- `train_epoch()` - Training epoch with teacher forcing
+- `validate_epoch()` - Validation epoch without teacher forcing
+- `_forward_pass()` - Model forward pass
+- `_compute_metrics()` - Calculate loss and accuracy
+- `set_teacher_forcing_ratio()` - Adjust teacher forcing
+- `translate_batch()` - Batch translation for inspection
+
+### `callback.py`
+**Classes:**
+- `Callback` - Base callback class
+- `CallbackHandler` - Manages multiple callbacks
+- `ModelCheckpoint` - Automatic model saving
+- `LearningRateScheduler` - LR scheduling integration
+- `EarlyStopping` - Early stopping implementation
+- `ProgressLogger` - Training progress logging
+
+**Methods in Callback:**
+- `on_train_begin()` - Called when training starts
+- `on_train_end()` - Called when training ends
+- `on_epoch_begin()` - Called at start of each epoch
+- `on_epoch_end()` - Called at end of each epoch
+- `on_batch_begin()` - Called at start of each batch
+- `on_batch_end()` - Called at end of each batch
+
+### `metrics.py`
+**Classes:**
+- `Metric` - Base metric class
+- `MetricTracker` - Tracks multiple metrics
+- `AccuracyMetric` - Accuracy calculation
+- `LossMetric` - Loss tracking
+
+**Methods in MetricTracker:**
+- `add_metric()` - Add new metric
+- `update()` - Update metric value
+- `compute_all()` - Compute all metrics
+- `reset_all()` - Reset all metrics
+
+### `training_utils.py`
+**Functions:**
+- `plot_training_history()` - Plot training curves
+- `save_training_report()` - Save comprehensive training report
+- `count_parameters()` - Count trainable parameters
+- `get_model_size()` - Calculate model size in MB
+- `setup_mixed_precision()` - Setup AMP training
 
 ## Main Package (`aceflow/`)
 
@@ -217,7 +282,9 @@ aceflow/
 **Exports:**
 - `Seq2SeqModel` from core
 - `Tokenizer`, `Vocabulary`, `Preprocessor` from utils
-- `Trainer` from trainers
+- `Seq2SeqTrainer`, `BaseTrainer` from trainers
+- `ModelCheckpoint`, `EarlyStopping`, `ProgressLogger` from trainers
+- `create_data_loader` from utils
 
 ## Example Files
 
@@ -238,6 +305,14 @@ aceflow/
 **Functions:**
 - Enhanced tokenizer usage examples
 
+### `examples/enhanced_training.py`
+**Functions:**
+- `demo_enhanced_training()` - Comprehensive training demonstration
+
+### `examples/clean_training.py`
+**Functions:**
+- Clean training example without optional dependencies
+
 ## Configuration Files
 
 ### `setup.py`
@@ -246,51 +321,94 @@ aceflow/
 
 ### `requirements.txt`
 **Lists:**
-- All Python dependencies
+- All Python dependencies including optional ones
+
+## Documentation Files
+
+### `docs/api/utilities.md`
+**Content:**
+- Comprehensive API reference for all utility classes
+- Usage examples and best practices
+- Method documentation and parameters
 
 ## Complete Function/Class List
 
-**Main Classes (15):**
-1. `Seq2SeqModel` - Main model
-2. `RNNLayer` - RNN abstraction
+**Main Classes (25+):**
+1. `Seq2SeqModel` - Main sequence-to-sequence model
+2. `RNNLayer` - Unified RNN layer abstraction
 3. `Encoder` - Encoder module
 4. `Decoder` - Decoder module
-5. `Attention` - Basic attention
+5. `Attention` - Basic attention mechanism
 6. `BahdanauAttention` - Additive attention
 7. `MultiHeadAttention` - Multi-head attention
-8. `AttentionalDecoder` - Decoder with attention
+8. `AttentionalDecoder` - Attention-based decoder
 9. `Vocabulary` - Vocabulary management
-10. `Preprocessor` - Text preprocessing
-11. `Tokenizer` - Main tokenizer
-12. `TranslationDataset` - Dataset class
+10. `Preprocessor` - Text preprocessing pipeline
+11. `Tokenizer` - Main tokenizer class
+12. `TranslationDataset` - PyTorch dataset for translation
 13. `AceModelSerializer` - Model serialization
-14. `Trainer` - Training management
-15. `TrainingCallback` - Training callback (example)
+14. `BaseTrainer` - Foundation trainer class
+15. `Seq2SeqTrainer` - Specialized Seq2Seq trainer
+16. `Callback` - Base callback class
+17. `CallbackHandler` - Callback management
+18. `ModelCheckpoint` - Model saving callback
+19. `LearningRateScheduler` - LR scheduling callback
+20. `EarlyStopping` - Early stopping callback
+21. `ProgressLogger` - Progress logging callback
+22. `Metric` - Base metric class
+23. `MetricTracker` - Metric management
+24. `AccuracyMetric` - Accuracy calculation
+25. `LossMetric` - Loss tracking
 
-**Main Functions (40+):**
-- Model: forward, encode, decode, beam_search, save, load
-- Layers: various forward passes and initializations
-- Attention: different attention mechanisms
-- Vocabulary: word management, encoding, decoding
-- Preprocessor: text cleaning, pipeline management
-- Tokenizer: encoding, decoding, batch processing
-- Data: dataset management, data loader creation
-- Training: epoch training, validation, history management
-- Serialization: model saving/loading
-- Utilities: RNN type recommendation, comparison
+**Key Methods (60+):**
+- **Model**: forward, encode, decode, beam_search, save, load, get_rnn_info
+- **Layers**: various forward passes, get_output_size
+- **Attention**: attention mechanisms, context calculation
+- **Vocabulary**: word management, encoding, decoding, statistics
+- **Preprocessor**: text cleaning, pipeline management, batch processing
+- **Tokenizer**: encoding, decoding, batch processing, serialization
+- **Data**: dataset management, data loader creation
+- **Training**: epoch training, validation, progress tracking, metrics
+- **Callbacks**: training hooks, model saving, early stopping
+- **Serialization**: model saving/loading in .ace format
+- **Utilities**: plotting, reporting, parameter counting
 
-**Key Configuration Methods:**
-- `info()` - Available in most classes for configuration inspection
-- `save()`/`load()` - Available for models and tokenizers
-- `__call__()` - Makes tokenizers and preprocessors callable
+**Key Features:**
+- `info()` - Configuration inspection (available in most classes)
+- `save()`/`load()` - Serialization (models, tokenizers, vocabularies)
+- `__call__()` - Callable interfaces (tokenizers, preprocessors)
+- Professional progress reporting with tqdm integration
+- Mixed precision training support
+- Comprehensive error handling
+- Flexible configuration system
+- Production-ready serialization
 
-This comprehensive structure provides:
-- **Modular design** with separate components
-- **Flexible configuration** for different use cases
-- **Multiple RNN types** support
-- **Advanced tokenization** with preprocessing pipelines
-- **Professional serialization** with .ace format
-- **Comprehensive training** utilities with monitoring
-- **Production-ready** examples and best practices
+## Enhanced Features in v1.5.0
 
-The library supports various sequence-to-sequence tasks including machine translation, text summarization, chatbot development, and more.
+### Training System
+- **Professional output formatting** with clean tables
+- **Robust progress tracking** without terminal breaking
+- **Advanced callback system** for extensible training
+- **Mixed precision training** for faster execution
+- **Comprehensive metrics** tracking and visualization
+
+### Tokenization System
+- **Modular preprocessing** pipeline
+- **Batch processing** support
+- **Organized serialization** to folder structures
+- **Language-specific** processing
+- **Vocabulary statistics** and analysis
+
+### Model Architecture
+- **Multiple RNN types** support (RNN, LSTM, GRU, BiLSTM, BiGRU)
+- **Attention mechanisms** (Bahdanau, Multi-Head)
+- **Flexible configuration** for various tasks
+- **Transfer learning** support with embedding resizing
+
+### Production Features
+- **Model serialization** in custom .ace format
+- **Training history** tracking and visualization
+- **Early stopping** and model checkpointing
+- **Device auto-detection** (CPU/GPU/MPS)
+- **Comprehensive error handling**
+
