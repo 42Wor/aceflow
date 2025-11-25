@@ -32,7 +32,8 @@ def demo_enhanced_training():
     tgt_tokenizer.fit(french_sentences)
 
     print(f"📝 Vocabulary sizes - Source: {len(src_tokenizer)}, Target: {len(tgt_tokenizer)}")
-
+   # src_tokenizer.save("english_tokenizer")
+    #tgt_tokenizer.save("french_tokenizer")
     # Create data loaders
     train_loader = create_data_loader(
         english_sentences[:80], french_sentences[:80], 

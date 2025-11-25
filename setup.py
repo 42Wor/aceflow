@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="aceflow",
-    version="1.5.1",
+    version="1.6.0",
     author="Maaz waheed",
     author_email="wwork4287@gmail.com",
     description="A Python library for building and training Seq2Seq models",

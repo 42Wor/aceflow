@@ -1,7 +1,10 @@
-import torch
+import aceflow
 from aceflow import Seq2SeqModel
 from aceflow.utils import Tokenizer, create_data_loader
 from aceflow.trainers import Seq2SeqTrainer, ModelCheckpoint, EarlyStopping, ProgressLogger
+
+print(aceflow.version)
+
 
 def advanced_training_example():
     # Sample data

@@ -1,7 +1,7 @@
 import torch
 from aceflow import Seq2SeqModel
 from aceflow.utils import Tokenizer, create_data_loader
-from aceflow.trainers import Trainer
+from aceflow.trainers import Seq2SeqTrainer
 
 def compare_rnn_types():
     """Compare different RNN types for the same task"""
@@ -11,8 +11,8 @@ def compare_rnn_types():
     french_sentences = ["bonjour le monde", "comment allez vous", "bonjour", "quel est votre nom"]
     
     # Initialize tokenizers
-    src_tokenizer = Tokenizer(name="english")
-    tgt_tokenizer = Tokenizer(name="french")
+    src_tokenizer = Tokenizer(name="english") 
+    tgt_tokenizer = Tokenizer(name="french") 
     src_tokenizer.fit(english_sentences)
     tgt_tokenizer.fit(french_sentences)
     
@@ -47,7 +47,7 @@ def compare_rnn_types():
         )
         
         # Train briefly
-        trainer = Trainer(model, learning_rate=0.001)
+        trainer = Seq2SeqTrainer(model, learning_rate=0.001)
         history = trainer.train(
             train_loader, train_loader, 
             epochs=5,  # Short training for comparison
