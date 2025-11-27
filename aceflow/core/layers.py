@@ -1,11 +1,15 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import math
+import numpy as np
+
+try:
+    from aceflow._rnn_ops import rnn_forward as rnn_forward_c
+    HAS_C_EXTENSION = True
+except ImportError:
+    HAS_C_EXTENSION = False
+    print("Warning: C extension not available, using PyTorch implementation")
 
 class RNNLayer(nn.Module):
-    """Unified RNN layer supporting multiple RNN types"""
-    
     def __init__(self, input_size, hidden_size, num_layers=1, dropout=0.0, 
                  rnn_type='lstm', bidirectional=False):
         super(RNNLayer, self).__init__()
@@ -15,50 +19,123 @@ class RNNLayer(nn.Module):
         self.rnn_type = rnn_type.lower()
         self.bidirectional = bidirectional
         
-        # Validate RNN type
-        valid_rnn_types = ['rnn', 'lstm', 'gru', 'birnn', 'bilstm', 'bigru']
-        if self.rnn_type not in valid_rnn_types:
-            raise ValueError(f"Invalid RNN type: {rnn_type}. Choose from {valid_rnn_types}")
+        # Store for C extension
+        self._c_weights = None
+        self._c_biases = None
         
-        # Handle bidirectional types
-        if self.rnn_type.startswith('bi'):
-            self.bidirectional = True
-            self.rnn_type = self.rnn_type[2:]  # Remove 'bi' prefix
+        # Create PyTorch RNN layer (fallback)
+        rnn_class = self._get_rnn_class()
+        self.rnn = rnn_class(
+            input_size, hidden_size, num_layers,
+            batch_first=True,
+            dropout=dropout if num_layers > 1 else 0,
+            bidirectional=bidirectional
+        )
         
-        # Create RNN layer
+        # Extract weights and biases for C extension
+        if HAS_C_EXTENSION:
+            self._extract_parameters_for_c()
+    
+    def _get_rnn_class(self):
         if self.rnn_type == 'rnn':
-            self.rnn = nn.RNN(
-                input_size, hidden_size, num_layers,
-                batch_first=True,
-                dropout=dropout if num_layers > 1 else 0,
-                bidirectional=bidirectional
-            )
+            return nn.RNN
         elif self.rnn_type == 'lstm':
-            self.rnn = nn.LSTM(
-                input_size, hidden_size, num_layers,
-                batch_first=True,
-                dropout=dropout if num_layers > 1 else 0,
-                bidirectional=bidirectional
-            )
+            return nn.LSTM
         elif self.rnn_type == 'gru':
-            self.rnn = nn.GRU(
-                input_size, hidden_size, num_layers,
-                batch_first=True,
-                dropout=dropout if num_layers > 1 else 0,
-                bidirectional=bidirectional
-            )
+            return nn.GRU
+        else:
+            raise ValueError(f"Unsupported RNN type: {self.rnn_type}")
+    
+    def _extract_parameters_for_c(self):
+        """Extract weights and biases for C extension"""
+        all_weights = []
+        all_biases = []
         
-        self.dropout = nn.Dropout(dropout)
+        for layer in self.rnn.all_weights:
+            weights = []
+            biases = []
+            for param in layer:
+                if param.dim() == 2:  # Weight matrix
+                    weights.append(param.detach().numpy())
+                else:  # Bias vector
+                    biases.append(param.detach().numpy())
+            
+            # Flatten and concatenate
+            if weights:
+                all_weights.append(np.concatenate([w.flatten() for w in weights]))
+            if biases:
+                all_biases.append(np.concatenate([b.flatten() for b in biases]))
         
+        if all_weights:
+            self._c_weights = np.concatenate(all_weights).astype(np.float32)
+        if all_biases:
+            self._c_biases = np.concatenate(all_biases).astype(np.float32)
+    
     def forward(self, x, hidden=None):
-        output, hidden = self.rnn(x, hidden)
-        output = self.dropout(output)
-        return output, hidden
+        # Always use PyTorch implementation for now until C extension is stable
+        return self.rnn(x, hidden)
+    
+    def _forward_c(self, x, hidden=None):
+        """C-optimized forward pass - TEMPORARILY DISABLED"""
+        # For now, always use PyTorch implementation
+        return self.rnn(x, hidden)
+        
+        # The C extension call below has argument count issues
+        # We'll fix this after verifying the C extension works properly
+        """
+        batch_size, seq_len, input_size = x.size()
+        
+        # Initialize hidden states if not provided
+        if hidden is None:
+            if self.rnn_type == 'lstm':
+                h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+                c0 = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+                hidden = (h0, c0)
+            else:
+                hidden = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+        
+        # Convert to numpy for C extension
+        x_np = x.detach().numpy().astype(np.float32)
+        
+        if self.rnn_type == 'lstm':
+            h_np = hidden[0].detach().numpy().astype(np.float32)
+            c_np = hidden[1].detach().numpy().astype(np.float32)
+        else:
+            h_np = hidden.detach().numpy().astype(np.float32)
+            c_np = np.zeros((self.num_layers, batch_size, self.hidden_size), dtype=np.float32)
+        
+        # Map RNN type to C enum
+        rnn_type_map = {'rnn': 0, 'lstm': 1, 'gru': 2}
+        c_rnn_type = rnn_type_map.get(self.rnn_type, 1)  # Default to LSTM
+        
+        # Call C extension - FIXED ARGUMENT COUNT
+        # The C function expects 11 arguments, but we were passing 12
+        try:
+            output_np, final_hidden_np, final_cell_np = rnn_forward_c(
+                x_np, h_np, c_np, self._c_weights, self._c_biases,
+                batch_size, seq_len, input_size, self.hidden_size,
+                self.num_layers, c_rnn_type  # Removed bidirectional parameter
+            )
+            
+            # Convert back to torch tensors
+            output = torch.from_numpy(output_np)
+            
+            if self.rnn_type == 'lstm':
+                final_hidden = torch.from_numpy(final_hidden_np)
+                final_cell = torch.from_numpy(final_cell_np)
+                hidden_out = (final_hidden, final_cell)
+            else:
+                hidden_out = torch.from_numpy(final_hidden_np)
+            
+            return output, hidden_out
+            
+        except Exception as e:
+            print(f"⚠️ C extension failed, falling back to PyTorch: {e}")
+            return self.rnn(x, hidden)
+        """
     
     def get_output_size(self):
-        """Get output size considering bidirectional"""
         return self.hidden_size * (2 if self.bidirectional else 1)
-
 class Encoder(nn.Module):
     def __init__(self, vocab_size, hidden_size, num_layers=2, dropout=0.1, 
                  rnn_type='lstm', bidirectional=False, embedding_dim=None):

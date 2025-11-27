@@ -1,0 +1,24 @@
+[package]
+name = "aceflow-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "aceflow_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.19", features = ["extension-module"] }
+ndarray = { version = "0.15", features = ["rayon"] }
+rayon = "1.7"
+numpy = "0.19"
+ordered-float = "3.7"
+hashbrown = "0.14"  # Faster hash maps
+
+[build-dependencies]
+pyo3-build-config = "0.19"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"

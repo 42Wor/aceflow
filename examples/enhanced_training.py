@@ -46,8 +46,8 @@ def demo_enhanced_training():
         src_tokenizer, tgt_tokenizer,
         batch_size=8, max_length=15
     )
+    print("⚡ Model Information:")
 
-    print("🧠 Initializing model...")
     # Initialize model
     model = Seq2SeqModel(
         src_vocab_size=len(src_tokenizer),
@@ -58,7 +58,10 @@ def demo_enhanced_training():
         dropout=0.1,
         rnn_type='lstm'
     )
-
+    model_info = model.get_rnn_info()
+    for key, value in model_info.items():
+        print(f"  {key}: {value}")
+    print("🧠 Initializing model...")
     print("⚡ Initializing enhanced trainer...")
     # Initialize enhanced trainer with proper parameters
     trainer = Seq2SeqTrainer(
