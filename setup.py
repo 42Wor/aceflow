@@ -23,33 +23,32 @@ else:
     link_args = ['-fopenmp']
     macros = [('_OPENMP', None)]
 
-# C extensions - only build if source files exist
-extensions = []
-try:
-    # Check if C source files exist before adding the extension
-    import os
-    c_sources = [
-        'aceflow/core/c_core/_rnn_ops.c',
-        'aceflow/core/c_core/_rnn_extension.c'
-    ]
-    
-    # Check if all source files exist
-    if all(os.path.exists(source) for source in c_sources):
-        extensions.append(
-            Extension(
-                'aceflow._rnn_ops',
-                sources=c_sources,
-                include_dirs=[np.get_include(), 'aceflow/core/c_core'],
-                libraries=['m'] if not is_windows else [],  # math library (not on Windows)
-                extra_compile_args=compile_args,
-                extra_link_args=link_args,
-                define_macros=macros
-            )
-        )
-    else:
-        print("Warning: C extension source files not found. Skipping C extension build.")
-except Exception as e:
-    print(f"Warning: Could not configure C extensions: {e}")
+extensions = [
+    Extension(
+        'aceflow._rnn_ops',
+        sources=[
+            'aceflow/core/c_core/_rnn_ops.c',
+            'aceflow/core/c_core/_rnn_extension.c'
+        ],
+        include_dirs=[np.get_include(), 'aceflow/core/c_core'],
+        libraries=['m'] if not is_windows else [],
+        extra_compile_args=compile_args,
+        extra_link_args=link_args,
+        define_macros=macros
+    ),
+    Extension(
+        'aceflow._attention_ops',
+        sources=[
+            'aceflow/core/c_core/_attention_ops.c',
+            'aceflow/core/c_core/_attention_extension.c'
+        ],
+        include_dirs=[np.get_include(), 'aceflow/core/c_core'],
+        libraries=['m'] if not is_windows else [],
+        extra_compile_args=compile_args,
+        extra_link_args=link_args,
+        define_macros=macros
+    )
+]
 
 # Rust extensions - only build if Cargo.toml exists
 rust_extensions = []
@@ -72,7 +71,7 @@ except Exception as e:
 
 setup(
     name="aceflow",
-    version="1.6.0",
+    version="1.6.1",
     author="Maaz waheed",
     author_email="wwork4287@gmail.com",
     ext_modules=extensions,
