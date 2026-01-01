@@ -1,0 +1,5 @@
+include requirements.txt
+include README.md
+include pyproject.toml
+recursive-include aceflow/core/c_core *.c *.h
+recursive-include aceflow-core *

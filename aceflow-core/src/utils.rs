@@ -1,16 +1,19 @@
 use ndarray::{Array2, Array3};
 use numpy::{PyArray2, PyArray3};
-use pyo3::Python;
+use ndarray::{ArrayView2, ArrayView3};
+use pyo3::prelude::*;
 
-/// Convert PyArray to ndarray with proper error handling
-pub fn pyarray_to_array2<'a>(py: Python<'a>, array: &'a PyArray2<f32>) -> &'a Array2<f32> {
+/// Converts a Python 2D array to a Rust ndarray View
+pub fn pyarray_to_array2<'a>(_py: Python<'a>, array: &'a PyArray2<f32>) -> ArrayView2<'a, f32> {
+    // Safety: We assume the numpy array is C-contiguous or standard layout.
+    // as_array() returns a View, which is cheap to copy.
     unsafe { array.as_array() }
 }
 
-pub fn pyarray_to_array3<'a>(py: Python<'a>, array: &'a PyArray3<f32>) -> &'a Array3<f32> {
+/// Converts a Python 3D array to a Rust ndarray View
+pub fn pyarray_to_array3<'a>(_py: Python<'a>, array: &'a PyArray3<f32>) -> ArrayView3<'a, f32> {
     unsafe { array.as_array() }
 }
-
 /// Utility functions for probability calculations
 pub fn softmax(logits: &[f32]) -> Vec<f32> {
     let max_logit = logits.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
