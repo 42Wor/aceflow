@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aceflow"
+version = "1.7.0"
+description = "A Python library for building and training Seq2Seq models"
+readme = { file = "README.md", content-type = "text/markdown" }
+authors = [
+    { name = "Maaz waheed", email = "wwork4287@gmail.com" }
+]
+license = { text = "MIT" }
+requires-python = ">=3.7"
+keywords = [
+    "seq2seq",
+    "deep learning",
+    "nlp",
+    "machine translation",
+    "artificial intelligence",
+    "neural networks",
+    "pytorch",
+    "transformer",
+]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+   'numpy>=1.19.0',
+'torch>=1.9.0',
+'tqdm>=4.60.0',
+'h5py>=3.0.0',
+'pyyaml>=5.4.0',
+'contractions>=0.1.73',
+'termcolor>=2.0.0',
+'matplotlib>=3.3.0',
+]
+
+[project.urls]
+Homepage = "https://github.com/42Wor/aceflow"
+Source = "https://github.com/42Wor/aceflow"
+BugTracker = "https://github.com/42Wor/aceflow/issues"
+
+[tool.setuptools]
+include-package-data = true
+zip-safe = false
+
+[tool.setuptools.packages.find]
+where = ["."]
