@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aceflow"
-version = "1.7.0"
+version = "1.8.0"
 description = "A Python library for building and training Seq2Seq models"
 readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
@@ -59,4 +59,14 @@ include-package-data = true
 zip-safe = false
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["."]  # Look in current directory
+include = ["aceflow*"]  # Only include aceflow packages
+exclude = [
+    "venv*",
+    "tests*", 
+    "examples*",
+    "build*",
+    "dist*",
+    "*.egg-info*",
+    "__pycache__*",
+]

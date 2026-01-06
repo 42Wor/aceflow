@@ -16,13 +16,13 @@ def demo_enhanced_training():
         "hello world", "how are you", "good morning", "what is your name",
         "i love programming", "the weather is nice", "see you later",
         "thank you", "have a nice day", "where is the station"
-    ] * 10  # Repeat for more data
+    ] * 1000  # Repeat for more data
     
     french_sentences = [
         "bonjour le monde", "comment allez vous", "bonjour", "quel est votre nom",
         "j aime la programmation", "le temps est agreable", "a plus tard",
         "merci", "passez une bonne journee", "ou est la gare"
-    ] * 10
+    ] * 1000
 
     print("📊 Preparing data...")
     # Initialize tokenizers

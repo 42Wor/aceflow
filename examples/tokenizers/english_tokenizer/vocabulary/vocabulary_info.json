@@ -1,0 +1,33 @@
+{
+  "name": "english_vocab",
+  "vocab_size": 30,
+  "special_tokens": [
+    "<pad>",
+    "<start>",
+    "<end>",
+    "<unk>",
+    "<mask>"
+  ],
+  "most_common_words": [
+    "you",
+    "is",
+    "the",
+    "nice",
+    "hello",
+    "world",
+    "how",
+    "are",
+    "good",
+    "morning",
+    "what",
+    "your",
+    "name",
+    "i",
+    "love",
+    "programming",
+    "weather",
+    "see",
+    "later",
+    "thank"
+  ]
+}
