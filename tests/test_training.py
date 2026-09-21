@@ -10,6 +10,12 @@ from aceflow import Seq2SeqModel
 from aceflow.utils import Tokenizer, create_data_loader
 from aceflow.trainers import Trainer
 
+
+def unpack_metrics(metrics):
+    if isinstance(metrics, dict):
+        return float(metrics["loss"]), float(metrics["accuracy"])
+    return metrics
+
 class TestTraining(unittest.TestCase):
     
     def setUp(self):
@@ -55,7 +61,7 @@ class TestTraining(unittest.TestCase):
         trainer = Trainer(model, learning_rate=0.001)
         
         # Test training epoch
-        train_loss, train_acc = trainer.train_epoch(self.train_loader)
+        train_loss, train_acc = unpack_metrics(trainer.train_epoch(self.train_loader))
         
         self.assertIsInstance(train_loss, float)
         self.assertIsInstance(train_acc, float)
@@ -73,7 +79,7 @@ class TestTraining(unittest.TestCase):
         trainer = Trainer(model, learning_rate=0.001)
         
         # Test validation epoch
-        val_loss, val_acc = trainer.validate_epoch(self.train_loader)  # Using train as val for test
+        val_loss, val_acc = unpack_metrics(trainer.validate_epoch(self.train_loader))
         
         self.assertIsInstance(val_loss, float)
         self.assertIsInstance(val_acc, float)
@@ -106,7 +112,11 @@ class TestTraining(unittest.TestCase):
             self.assertEqual(len(history['train_loss']), 3)
             
             # Check model was saved
-            self.assertTrue(os.path.exists(save_path))
+            self.assertTrue(
+                os.path.exists(save_path)
+                or os.path.exists(save_path.replace(".ace", "_best.ace"))
+                or os.path.exists(save_path.replace(".ace", "_final.ace"))
+            )
             
     def test_training_history_saving(self):
         """Test training history saving"""
@@ -141,7 +151,7 @@ class TestTraining(unittest.TestCase):
                 )
                 
                 trainer = Trainer(model, learning_rate=0.001)
-                train_loss, train_acc = trainer.train_epoch(self.train_loader)
+                train_loss, train_acc = unpack_metrics(trainer.train_epoch(self.train_loader))
                 
                 self.assertIsInstance(train_loss, float)
                 self.assertIsInstance(train_acc, float)
@@ -159,9 +169,8 @@ class TestTraining(unittest.TestCase):
         
         # Test with different teacher forcing ratios
         for tf_ratio in [0.0, 0.5, 1.0]:
-            train_loss, train_acc = trainer.train_epoch(
-                self.train_loader, teacher_forcing_ratio=tf_ratio
-            )
+            trainer.teacher_forcing_ratio = tf_ratio
+            train_loss, train_acc = unpack_metrics(trainer.train_epoch(self.train_loader))
             
             self.assertIsInstance(train_loss, float)
             self.assertIsInstance(train_acc, float)

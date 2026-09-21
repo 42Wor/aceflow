@@ -9,6 +9,10 @@ The tokenization system consists of three main components:
 2. **Vocabulary**: Word-to-index mapping with frequency tracking
 3. **Tokenizer**: Main interface for encoding/decoding text
 
+Encoding and batch encoding are executed by `mallow_core.AutoTokenizer`
+(word-level backend). Fitting, preprocessing, and vocabulary management stay
+in AceFlow; the encode path does not keep a second Python tokenizer.
+
 ## Basic Usage
 
 ### Initialization

@@ -53,10 +53,14 @@ class TestSeq2SeqModel(unittest.TestCase):
         
         # Test with teacher forcing
         output = model(src, tgt)
+        if isinstance(output, tuple):
+            output = output[0]
         self.assertEqual(output.shape, (self.batch_size, self.seq_length, self.tgt_vocab_size))
         
         # Test without teacher forcing (inference mode)
         output = model(src)
+        if isinstance(output, tuple):
+            output = output[0]
         self.assertEqual(output.shape, (self.batch_size, model.max_length, self.tgt_vocab_size))
         
     def test_attention_mechanism(self):
@@ -127,6 +131,10 @@ class TestSeq2SeqModel(unittest.TestCase):
             with torch.no_grad():
                 orig_output = model(src, tgt)
                 loaded_output = loaded_model(src, tgt)
+                if isinstance(orig_output, tuple):
+                    orig_output = orig_output[0]
+                if isinstance(loaded_output, tuple):
+                    loaded_output = loaded_output[0]
                 
             # Outputs should be similar (allowing for small numerical differences)
             self.assertEqual(orig_output.shape, loaded_output.shape)
@@ -173,6 +181,8 @@ class TestSeq2SeqModel(unittest.TestCase):
         tgt = torch.randint(0, self.tgt_vocab_size, (self.batch_size, self.seq_length))
         
         output = model(src, tgt)
+        if isinstance(output, tuple):
+            output = output[0]
         self.assertEqual(output.shape, (self.batch_size, self.seq_length, self.tgt_vocab_size))
 
 if __name__ == '__main__':

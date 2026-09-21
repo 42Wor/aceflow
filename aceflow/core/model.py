@@ -139,22 +139,26 @@ class Seq2SeqModel(nn.Module):
     def _init_decoder_hidden(self, encoder_hidden):
         """Initialize decoder hidden state from encoder hidden state"""
         if self.rnn_type in ['lstm', 'bilstm']:
-            # For LSTM: (hidden, cell)
             if self.bidirectional:
-                # Sum bidirectional layers
-                hidden = encoder_hidden[0][::2] + encoder_hidden[0][1::2]  # Even and odd
-                cell = encoder_hidden[1][::2] + encoder_hidden[1][1::2]
-                return (hidden, cell)
-            else:
-                return encoder_hidden
-        else:
-            # For RNN/GRU
-            if self.bidirectional:
-                # Sum bidirectional layers
-                hidden = encoder_hidden[::2] + encoder_hidden[1::2]
-                return hidden
-            else:
-                return encoder_hidden
+                hidden, cell = encoder_hidden
+                return (
+                    self._merge_bidirectional_state(hidden),
+                    self._merge_bidirectional_state(cell),
+                )
+            return encoder_hidden
+        if self.bidirectional:
+            return self._merge_bidirectional_state(encoder_hidden)
+        return encoder_hidden
+
+    @staticmethod
+    def _merge_bidirectional_state(state):
+        """Concat forward/reverse directions so decoder hidden matches 2H encoder outputs."""
+        num_layers = state.size(0) // 2
+        merged = [
+            torch.cat([state[layer * 2], state[layer * 2 + 1]], dim=-1)
+            for layer in range(num_layers)
+        ]
+        return torch.stack(merged, dim=0)
     
     def encode(self, src):
         """Encode source sequences"""

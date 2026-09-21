@@ -17,6 +17,7 @@ Before installing AceFlow, ensure you have:
 
 - **Python**: 3.7 or higher
 - **PyTorch**: 1.9 or higher
+- **mallow-core**: native RNN, attention, and tokenizer kernels (no C compiler required)
 - **Operating System**: Windows, macOS, or Linux
 
 ### Checking Your Environment

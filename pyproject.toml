@@ -1,10 +1,9 @@
 [build-system]
-# We explicitly require numpy and setuptools-rust here so they are 
-# installed in the isolated build environment before setup.py runs.
+# setuptools-rust is optional and only needed to build aceflow-core beam search.
+# RNN/attention kernels now live in mallow-core; no C compiler is required.
 requires = [
     "setuptools>=61.0",
     "wheel",
-    "numpy", 
     "setuptools-rust"
 ]
 build-backend = "setuptools.build_meta"

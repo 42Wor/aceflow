@@ -7,7 +7,7 @@
 ![PyTorch](https://img.shields.io/badge/PyTorch-1.9%2B-red)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
-A powerful Python library for building and training Sequence-to-Sequence models with attention mechanisms.
+A powerful Python library for building and training Sequence-to-Sequence models with attention mechanisms. Inference RNN and attention kernels run in `mallow-core` (Rust / SIMD); training stays on PyTorch autograd.
 
 </div>
 
