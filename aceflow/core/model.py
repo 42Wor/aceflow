@@ -10,11 +10,15 @@ from .layers import Encoder, Decoder
 from .attention import AttentionalDecoder
 
 try:
-    from aceflow_core import beam_search_rust, beam_search_batch_rust
+    from mallow_core import beam_search_rust, beam_search_batch_rust
     HAS_RUST_EXTENSION = True
 except ImportError:
-    HAS_RUST_EXTENSION = False
-    print("Warning: Rust extension not available, using Python beam search")
+    try:
+        from aceflow_core import beam_search_rust, beam_search_batch_rust
+        HAS_RUST_EXTENSION = True
+    except ImportError:
+        HAS_RUST_EXTENSION = False
+        print("Warning: Rust beam-search extension not available, using Python fallback")
 
 class Seq2SeqModel(nn.Module):
     def __init__(self, src_vocab_size, tgt_vocab_size, hidden_size=256, 
