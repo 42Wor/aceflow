@@ -36,3 +36,4 @@ class MtfReader:
 def load_mtf(filepath: str) -> MtfReader:
     """Open and parse an MTF model file."""
     return MtfReader(filepath)
+

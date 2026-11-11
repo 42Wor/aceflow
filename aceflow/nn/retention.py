@@ -67,3 +67,4 @@ class MultiScaleRetention(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.forward_parallel(x)
+

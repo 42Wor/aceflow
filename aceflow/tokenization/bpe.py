@@ -30,3 +30,4 @@ class AutoTokenizer:
         if self._native is not None:
             return self._native.decode(token_ids)
         return "".join(chr(i) for i in token_ids if i < 256)
+

@@ -35,3 +35,4 @@ def pad_or_trim(array: np.ndarray, length: int) -> np.ndarray:
     if len(array) > length:
         return array[:length]
     return np.pad(array, (0, max(0, length - len(array))))
+

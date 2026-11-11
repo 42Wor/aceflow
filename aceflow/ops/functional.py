@@ -50,3 +50,4 @@ def softmax(x: Tensor, axis: int = -1) -> Tensor:
     arr = x.numpy()
     e_x = np.exp(arr - np.max(arr, axis=axis, keepdims=True))
     return Tensor(e_x / np.sum(e_x, axis=axis, keepdims=True), x.device)
+

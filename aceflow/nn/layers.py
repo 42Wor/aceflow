@@ -86,3 +86,4 @@ class SwiGLU(Module):
         silu = gate / (1.0 + np.exp(-gate))
         inter = Tensor(silu * up, x.device)
         return self.w_down(inter)
+

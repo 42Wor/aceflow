@@ -70,3 +70,4 @@ class Device:
         if isinstance(other, str):
             return str(self) == other or self.type == other
         return False
+
