@@ -17,3 +17,4 @@ Welcome to the documentation for **AceFlow**, a high-performance deep learning f
 AceFlow supports:
 - **AVX2 / NEON CPU**: Multi-threaded SIMD execution via Rayon.
 - **WebGPU (WGPU)**: Portable GPU acceleration using native WGSL shaders.
+
