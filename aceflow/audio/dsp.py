@@ -25,7 +25,10 @@ def log_mel_spectrogram(
     padding: int = 0,
 ) -> np.ndarray:
     if _C is not None:
-        return _C.log_mel_spectrogram(audio, n_mels, n_fft, hop_length, padding)
+        if hasattr(_C, "MelSpectrogram") and (n_mels != 80 or n_fft != 400 or hop_length != 160 or padding != 0):
+            spec = _C.MelSpectrogram(16000, n_fft, hop_length, n_mels, padding)
+            return spec.transform(audio)
+        return _C.log_mel_spectrogram(audio)
     raise NotImplementedError("Native DSP extension not available.")
 
 
