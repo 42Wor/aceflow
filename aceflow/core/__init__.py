@@ -1,14 +1,6 @@
-from .model import Seq2SeqModel
-from .layers import Encoder, Decoder, Attention, RNNLayer
-from .attention import BahdanauAttention, AttentionalDecoder, MultiHeadAttention
+from .native import native_rnn, native_bahdanau_attention
 
 __all__ = [
-    "Seq2SeqModel",
-    "Encoder",
-    "Decoder",
-    "Attention",
-    "RNNLayer",
-    "BahdanauAttention",
-    "AttentionalDecoder",
-    "MultiHeadAttention",
+    "native_rnn",
+    "native_bahdanau_attention",
 ]
