@@ -2,23 +2,34 @@
 name = "aceflow-core"
 version = "0.1.0"
 edition = "2021"
+description = "Shared Rust and Python tensor, DSP, tokenizer, and inference primitives for Mallow"
+license = "MIT"
 
 [lib]
 name = "aceflow_core"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+wgpu-runtime = ["dep:bytemuck", "dep:pollster", "dep:wgpu"]
+extension-module = ["pyo3/extension-module", "wgpu-runtime"]
 
 [dependencies]
-pyo3 = { version = "0.19", features = ["extension-module"] }
+bytemuck = { version = "1.14", features = ["derive"], optional = true }
+hound = "3.5"
 ndarray = { version = "0.15", features = ["rayon"] }
-rayon = "1.7"
-numpy = "0.19"
-ordered-float = "3.7"
-hashbrown = "0.14"  # Faster hash maps
-
-[build-dependencies]
-pyo3-build-config = "0.19"
+numpy = "0.21"
+pollster = { version = "0.3", optional = true }
+pyo3 = { version = "0.21", features = ["abi3-py38"] }
+rayon = "1.10"
+regex = "1.10"
+rustc-hash = "2.1"
+rustfft = "6.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wgpu = { version = "0.20", optional = true }
 
 [profile.release]
-lto = true
+opt-level = 3
+lto = "thin"
 codegen-units = 1
-panic = "abort"

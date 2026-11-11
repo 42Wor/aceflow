@@ -1,44 +1,25 @@
 [build-system]
-# setuptools-rust is optional and only needed to build aceflow-core beam search.
-# RNN/attention kernels now live in mallow-core; no C compiler is required.
-requires = [
-    "setuptools>=61.0",
-    "wheel",
-    "setuptools-rust"
-]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
 
 [project]
 name = "aceflow"
-version = "1.6.2"
-description = "A Python library for building and training Seq2Seq models"
+version = "0.2.0"
+description = "Monolithic deep learning framework with native SIMD, WebGPU, DSP, and tokenization"
 readme = "README.md"
-requires-python = ">=3.7"
-license = {text = "MIT License"}
-authors = [
-    {name = "Maaz waheed", email = "wwork4287@gmail.com"}
-]
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Maaz waheed", email = "wwork4287@gmail.com" }]
+dependencies = ["numpy>=1.21"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+    "Programming Language :: Rust",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: Implementation :: CPython",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-keywords = ["seq2seq", "machine-learning", "rust", "numpy"]
 
-# Automatically read requirements.txt
-dynamic = ["dependencies"]
-
-[project.urls]
-"Bug Tracker" = "https://github.com/42Wor/aceflow/issues"
-"Source Code" = "https://github.com/42Wor/aceflow"
-
-[tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
-
-[tool.setuptools.packages.find]
-where = ["."]  # "." means root directory
-include = ["aceflow*"]
+[tool.maturin]
+features = ["extension-module"]
+manifest-path = "aceflow-core/Cargo.toml"
+module-name = "aceflow._native"
+python-packages = ["aceflow"]
