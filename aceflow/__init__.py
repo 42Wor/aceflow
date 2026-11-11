@@ -7,6 +7,7 @@ from . import io
 from . import nn
 from . import ops
 from . import tokenization
+from .io import load_model, save_model, load_mtf, save_mtf
 from .trainers import BaseTrainer, ModelCheckpoint, EarlyStopping, ProgressLogger
 
 try:
@@ -23,6 +24,10 @@ __all__ = [
     "audio",
     "tokenization",
     "io",
+    "load_model",
+    "save_model",
+    "load_mtf",
+    "save_mtf",
     "BaseTrainer",
     "ModelCheckpoint",
     "EarlyStopping",
