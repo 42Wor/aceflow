@@ -1,102 +1,88 @@
-# AceFlow — Seq2Seq Model Library
+# AceFlow
+
+High-performance, dual-tier monolithic deep learning framework written in Rust and Python.
 
 <div align="center">
 
-![AceFlow](https://img.shields.io/badge/AceFlow-Seq2Seq-blue)
+![AceFlow](https://img.shields.io/badge/AceFlow-Core-blue)
 ![Python](https://img.shields.io/badge/Python-3.8%2B-green)
-![PyTorch](https://img.shields.io/badge/PyTorch-1.9%2B-red)
+![Rust](https://img.shields.io/badge/Rust-2021%20Edition-orange)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
-
-A Python library for building and training Sequence-to-Sequence models with attention.  
-**Inference** RNN and attention kernels run in `mallow-core` (Rust / SIMD).  
-**Training** stays on PyTorch autograd.
 
 </div>
 
 ---
 
-## Features
-
-- **Multiple RNN types** — LSTM, GRU, vanilla RNN, bidirectional variants
-- **Attention mechanisms** — Bahdanau (additive) and Luong (dot / general / concat)
-- **Native inference** — eval-mode forward pass uses AVX2/NEON kernels via `mallow_core`
-- **Beam search** — `mallow_core.beam_search_rust` (falls back to `aceflow_core` then pure Python)
-- **Custom model format** — save/load in `.ace` format
-- **AutoTokenizer** — `mallow_core.AutoTokenizer` handles `aceflow-word` schema
-
----
-
-## Quick example
-
-```python
-from aceflow import Seq2SeqModel
-from aceflow.utils import Tokenizer
-
-model = Seq2SeqModel(
-    src_vocab_size=1000,
-    tgt_vocab_size=1000,
-    hidden_size=256,
-    rnn_type="lstm",
-    use_attention=True,
-)
-
-model.save("model.ace")
-loaded = Seq2SeqModel.load("model.ace")
-```
-
----
-
-## Installation
-
-```console
-# 1. build and install mallow-core first
-cd ../mallow-core
-maturin develop --release
-cd ../AceFlow
-
-# 2. editable install
-pip install -e .
-```
-
-No C compiler required.
-
----
-
 ## Architecture
 
-```
-aceflow/
-├── core/
-│   ├── model.py        Seq2SeqModel — beam search via mallow_core
-│   ├── layers.py       RNNLayer    — training on PyTorch, eval via mallow_core
-│   ├── attention.py    BahdanauAttention / LuongAttention
-│   └── native.py       weight packing + mallow_core kernel calls
-└── utils/
-    └── tokenizer/
-        └── tokenizer.py   backed by mallow_core.AutoTokenizer
-```
+`AceFlow` is structured as a dual-tier framework:
+1. **Engine Tier (`aceflow-core` in Rust):**
+   - High-throughput SIMD recurrence kernels (AVX2 / NEON)
+   - Multi-head and additive attention kernels
+   - WebGPU compute shaders (WGSL) for GPU acceleration
+   - 80-channel log-mel filterbanks and STFT power audio DSP
+   - SIMD Byte-level BPE tokenizer
+   - Native PyO3 bridge (`aceflow._native`)
+2. **Framework Tier (`aceflow` in Python):**
+   - `af.Tensor` & `af.Device`: High-level tensor memory and hardware abstractions (CPU, WebGPU)
+   - `af.nn`: PyTorch-compatible modules (`Module`, `Parameter`, `Linear`, `RMSNorm`, `LayerNorm`, `SwiGLU`, `MultiScaleRetention`)
+   - `af.ops`: Functional operators (`matmul`, `rms_norm`, `swiglu`, `gelu`, `silu`, `softmax`)
+   - `af.audio`: Audio DSP pipelines (`mel_filters`, `log_mel_spectrogram`, `pad_or_trim`)
+   - `af.tokenization`: Fast `AutoTokenizer`
+   - `af.trainers`: Sequence trainers, early stopping, and metric tracking harnesses
+   - `af.io`: Zero-copy MTF (Maaz Tensor Format) memory-mapped reader
 
-### Import priority for beam search (`model.py`)
+---
 
-```
-mallow_core  →  aceflow_core (legacy shim)  →  pure-Python fallback
+## Quickstart
+
+```python
+import numpy as np
+import aceflow as af
+
+# 1. Device and Tensor allocation
+dev = af.Device.cpu()
+x = af.Tensor.zeros([2, 4], device=dev)
+print(x)
+
+# 2. Neural Network Layers
+linear = af.nn.Linear(4, 8)
+out = linear(x)
+print("Linear output shape:", out.shape)
+
+# 3. Multi-Scale Retention (Dual-Form O(1) step inference & O(N) parallel training)
+retention = af.nn.MultiScaleRetention(d_model=64, num_heads=4)
+seq = af.Tensor(np.random.randn(2, 10, 64).astype(np.float32))
+ret_out = retention(seq)
+print("Retention output shape:", ret_out.shape)
+
+# 4. Audio DSP (Log-Mel Filterbanks)
+mel = af.audio.mel_filters(n_mels=80, n_fft=400, sample_rate=16000)
+print("Mel filterbank shape:", mel.shape)
 ```
 
 ---
 
-## Tests
+## Building from Source
 
-```console
-python -m pytest tests/ -q
-# 25 passed, 7 subtests passed
+Prerequisites:
+- Python >= 3.8
+- Rust toolchain (cargo, rustc >= 1.70)
+- `maturin` >= 1.4
+
+```bash
+cd AceFlow
+pip install maturin
+maturin develop --release
+```
+
+Run test suite:
+```bash
+python -m unittest discover tests
 ```
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
----
-
-<div align="center">Made with ❤️ by Maaz Waheed</div>
+MIT License.
