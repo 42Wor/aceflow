@@ -6,7 +6,14 @@ from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
-from mallow_core import bahdanau_attention_forward, rnn_forward
+try:
+    from .._native import bahdanau_attention_forward, rnn_forward
+except ImportError:
+    try:
+        from mallow_core import bahdanau_attention_forward, rnn_forward
+    except ImportError:
+        bahdanau_attention_forward = None
+        rnn_forward = None
 
 HiddenState = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 
@@ -104,3 +111,7 @@ def native_bahdanau(
         torch.from_numpy(np.ascontiguousarray(context)).to(device),
         torch.from_numpy(np.ascontiguousarray(weights)).to(device),
     )
+
+
+# Alias for backwards compatibility
+native_bahdanau_attention = native_bahdanau
